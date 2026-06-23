@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+.next/
+out/
+build/
+dist/
+dist-desktop/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Run data (large log files and outputs)
+runs/
+
+# Desktop
+desktop/node_modules/
+
+# Misc
+.DS_Store
+*.pem
+*.log
+npm-debug.log*
+.env*
+
+# SDD scratch
+.superpowers/sdd/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# IDE
+.idea/
+.vscode/
+
+# Tool state
+.omx/
+.codex/

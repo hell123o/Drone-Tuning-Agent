@@ -1,0 +1,20 @@
+[project]
+name = "drone-agent"
+version = "0.1.0"
+description = "Drone flight log diagnostic agent"
+requires-python = ">=3.11"
+dependencies = [
+    "pyulog",
+    "pymavlink",
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "openai",
+]
+
+[project.scripts]
+drone-agent = "main:main"
+
+[tool.setuptools]
+py-modules = ["main", "agent"]
+packages = ["tools"]

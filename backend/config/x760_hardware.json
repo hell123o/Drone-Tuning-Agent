@@ -1,0 +1,45 @@
+{
+  "name": "X760 heavy-lift quad",
+  "firmware": "PX4",
+  "airframe": "quadrotor",
+  "wheelbase_mm": 760,
+  "empty_weight_kg": 2.8,
+  "max_takeoff_weight_kg": 6.5,
+  "typical_takeoff_weight_kg": 4.0,
+  "max_distance_m": 5000,
+  "safe_radius_m": 3000,
+  "max_speed_kmh": 60,
+  "flight_controller": "Pixhawk 6C",
+  "propeller_inch": 17,
+  "motor_kv": 340,
+  "battery": "6S LiPo, usually 2x 5000mAh 50C",
+  "tuning_goal": "stable and predictable heavy-lift flight, not agile racing behavior",
+  "stable_px4_profile": {
+    "MC_ROLL_P": 6.0,
+    "MC_PITCH_P": 6.0,
+    "MC_ROLLRATE_P": 0.12,
+    "MC_ROLLRATE_I": 0.12,
+    "MC_ROLLRATE_D": 0.010,
+    "MC_PITCHRATE_P": 0.12,
+    "MC_PITCHRATE_I": 0.12,
+    "MC_PITCHRATE_D": 0.010,
+    "MC_YAWRATE_P": 0.20,
+    "MC_YAWRATE_I": 0.08,
+    "MC_YAWRATE_D": 0.003,
+    "IMU_GYRO_CUTOFF": 30,
+    "IMU_DGYRO_CUTOFF": 25
+  },
+  "safe_adjustment_limits": {
+    "angle_p_step": 0.5,
+    "rate_p_step": 0.02,
+    "rate_i_step": 0.02,
+    "rate_d_step": 0.001,
+    "yaw_rate_p_step": 0.05,
+    "trim_max_rad": 0.05
+  },
+  "notes": [
+    "Large 17-inch props respond slowly; do not tune for racing-like agility.",
+    "If vibration is normal but attitude oscillates near 1 Hz, treat it as possible physical low-frequency sway or wind before aggressive PID changes.",
+    "Before changing PID, prioritize battery/current sensing, center of gravity, calibration, loose motor/ESC wiring, and prop balance checks."
+  ]
+}

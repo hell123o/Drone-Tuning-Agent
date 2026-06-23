@@ -1,0 +1,74 @@
+{
+  "name": "drone-tuning-agent-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Drone Tuning Agent Desktop",
+  "main": "main.js",
+  "scripts": {
+    "dev": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis portable"
+  },
+  "dependencies": {
+    "electron-is-dev": "^3.0.1"
+  },
+  "devDependencies": {
+    "electron": "^39.8.10",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.xjx.drone-tuning-agent",
+    "productName": "Drone Tuning Agent",
+    "asar": false,
+    "afterPack": "afterPack.js",
+    "directories": {
+      "output": "../dist-desktop"
+    },
+    "files": [
+      "main.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../frontend/.next/standalone",
+        "to": "frontend-standalone",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../frontend/.next/static",
+        "to": "frontend-standalone/.next/static"
+      },
+      {
+        "from": "../frontend/public",
+        "to": "frontend-standalone/public",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../backend/dist/drone-agent-cli.exe",
+        "to": "app-core/drone-agent-cli.exe"
+      },
+      {
+        "from": "../backend/config",
+        "to": "app-core/config"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "artifactName": "${productName}-${version}-Setup.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-Portable.${ext}"
+    }
+  }
+}
