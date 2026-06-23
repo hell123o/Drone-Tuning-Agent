@@ -14,7 +14,7 @@ __pycache__/
 *.egg-info/
 
 # Run data (large log files and outputs)
-runs/
+/runs/
 
 # Desktop
 desktop/node_modules/
