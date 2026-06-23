@@ -55,3 +55,18 @@ export type RunStatus = Partial<RunArtifact> & {
   stderr?: string;
   updatedAt?: string;
 };
+
+export type RunSummary = {
+  runId: string;
+  state: "uploading" | "running" | "done" | "error";
+  step?: string;
+  progress?: number;
+  startedAt?: string;
+  finishedAt?: string;
+  updatedAt?: string;
+  metadata?: Record<string, string>;
+  hasReport: boolean;
+  hasParams: boolean;
+  hasPdf: boolean;
+  chartsCount: number;
+};
