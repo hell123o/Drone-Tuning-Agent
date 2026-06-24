@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
   if (accept.includes("text/html")) {
     return new NextResponse(null, {
       status: 303,
-      headers: { Location: `/progress/${encodeURIComponent(runId)}` },
+      headers: { Location: `/runs/${encodeURIComponent(runId)}` },
     });
   }
 

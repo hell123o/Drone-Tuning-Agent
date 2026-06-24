@@ -10,7 +10,9 @@ import { Textarea } from "@/components/ui/textarea";
 
 import type { WizardState } from "./use-wizard-state";
 
-export function StepDescribe({ wizard }: { wizard: WizardState }) {
+type StepDescribeProps = { wizard: WizardState; onExplicitStart: () => void };
+
+export function StepDescribe({ wizard, onExplicitStart }: StepDescribeProps) {
   return (
     <div className="space-y-8">
       <div>
@@ -64,7 +66,7 @@ export function StepDescribe({ wizard }: { wizard: WizardState }) {
         <Button variant="outline" onClick={wizard.prev}>
           上一步
         </Button>
-        <Button onClick={wizard.next} size="lg">
+        <Button onClick={onExplicitStart} size="lg">
           开始诊断
         </Button>
       </div>

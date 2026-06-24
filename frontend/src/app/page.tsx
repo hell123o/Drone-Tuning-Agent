@@ -1,24 +1,61 @@
 "use client";
 
-import { AppHeader } from "@/features/diagnosis/app-header";
-import { DiagnosisForm } from "@/features/diagnosis/diagnosis-form";
-import { ResultTabs } from "@/features/diagnosis/result-tabs";
-import { useDiagnosisRun } from "@/features/diagnosis/use-diagnosis-run";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+import { WizardStepper } from "@/features/wizard/wizard-stepper";
+import { StepDescribe } from "@/features/wizard/step-describe";
+import { StepRunning } from "@/features/wizard/step-running";
+import { StepUpload } from "@/features/wizard/step-upload";
+import { useDiagnosisSubmission } from "@/features/wizard/use-diagnosis-submission";
+import { useWizardState } from "@/features/wizard/use-wizard-state";
 
 export default function Home() {
-  const diagnosis = useDiagnosisRun();
+  const router = useRouter();
+  const wizard = useWizardState();
+  const [showRunning, setShowRunning] = useState(false);
+
+  const submission = useDiagnosisSubmission((runId) => {
+    router.push(`/runs/${encodeURIComponent(runId)}`);
+  });
+
+  function handleStart() {
+    wizard.next();
+    setShowRunning(true);
+    void submission.submit(wizard.form);
+  }
+
+  function handleAbandon() {
+    submission.abandon();
+    setShowRunning(false);
+    wizard.reset();
+  }
+
+  function handleRetry() {
+    submission.abandon();
+    setShowRunning(false);
+    wizard.reset();
+  }
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,oklch(0.985_0.006_255)_0%,oklch(0.955_0.018_255)_48%,oklch(0.98_0.004_245)_100%)] text-foreground">
-      <section className="mx-auto flex w-full max-w-[1500px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
-        <AppHeader loading={diagnosis.loading} hasResult={Boolean(diagnosis.result)} progress={diagnosis.progress} />
-        <div className="grid min-h-[calc(100vh-180px)] gap-5 xl:grid-cols-[440px_minmax(0,1fr)]">
-          <DiagnosisForm diagnosis={diagnosis} />
-          <section className="min-w-0">
-            <ResultTabs diagnosis={diagnosis} />
-          </section>
-        </div>
-      </section>
-    </main>
+    <div className="mx-auto max-w-2xl space-y-10">
+      <WizardStepper current={showRunning ? "running" : wizard.step} />
+
+      {showRunning || wizard.step === "running" ? (
+        <StepRunning
+          loading={submission.loading}
+          progress={submission.progress}
+          clientStatus={submission.clientStatus}
+          activeRunId={submission.activeRunId}
+          error={submission.error}
+          onAbandon={handleAbandon}
+          onRetry={handleRetry}
+        />
+      ) : wizard.step === "upload" ? (
+        <StepUpload wizard={wizard} />
+      ) : (
+        <StepDescribe wizard={wizard} onExplicitStart={handleStart} />
+      )}
+    </div>
   );
 }
