@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { existsSync, readFileSync } from "node:fs";
 import * as path from "node:path";
 
@@ -17,7 +18,7 @@ export default async function RunDetailPage({
     return (
       <div className="space-y-4">
         <p className="text-muted-foreground">该诊断记录不存在。</p>
-        <a href="/runs" className="text-primary hover:underline">返回历史列表</a>
+        <Link href="/runs" className="text-primary hover:underline">返回历史列表</Link>
       </div>
     );
   }

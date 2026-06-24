@@ -43,7 +43,6 @@ export default function Home() {
 
       {showRunning || wizard.step === "running" ? (
         <StepRunning
-          loading={submission.loading}
           progress={submission.progress}
           clientStatus={submission.clientStatus}
           activeRunId={submission.activeRunId}

@@ -61,14 +61,6 @@ export async function POST(request: NextRequest) {
 
   startDiagnosisJob({ runId, outputDir, command, args, apiKey: body.apiKey?.trim() });
 
-  const accept = request.headers.get("accept") || "";
-  if (accept.includes("text/html")) {
-    return new NextResponse(null, {
-      status: 303,
-      headers: { Location: `/runs/${encodeURIComponent(runId)}` },
-    });
-  }
-
   return NextResponse.json(
     {
       runId,

@@ -11,7 +11,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { clampProgress } from "./wizard-utils.mjs";
 
 type StepRunningProps = {
-  loading: boolean;
   progress: number;
   clientStatus: string;
   activeRunId: string;
@@ -21,7 +20,6 @@ type StepRunningProps = {
 };
 
 export function StepRunning({
-  loading,
   progress,
   clientStatus,
   activeRunId,
