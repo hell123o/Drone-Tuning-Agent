@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { isPathInside, RUNS_ROOT } from "@/lib/server/paths";
 import { RunHeader } from "@/features/runs/run-header";
 import { RunDetailClient } from "@/features/runs/run-detail-client";
-import type { RunStatus } from "@/features/runs/types";
+import type { RunChartData, RunStatus } from "@/features/runs/types";
 
 export default async function RunDetailPage({
   params,
@@ -41,10 +41,20 @@ export default async function RunDetailPage({
     }
   }
 
+  let chartData: RunChartData | null = null;
+  const chartDataPath = path.resolve(runRoot, "charts.json");
+  if (existsSync(chartDataPath)) {
+    try {
+      chartData = JSON.parse(readFileSync(chartDataPath, "utf-8"));
+    } catch {
+      // 损坏的 charts.json 忽略，回退 PNG
+    }
+  }
+
   return (
     <div className="space-y-8">
       <RunHeader run={run} />
-      <RunDetailClient run={run} reportText={reportText} paramsPreview={paramsPreview} />
+      <RunDetailClient run={run} reportText={reportText} paramsPreview={paramsPreview} chartData={chartData} />
     </div>
   );
 }

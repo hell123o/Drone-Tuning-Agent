@@ -4,8 +4,9 @@ import { useState } from "react";
 import { Maximize2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { buildChartOption } from "@/features/charts/chart-config";
 import { ChartLightbox, type ChartLightboxTarget } from "@/features/charts/chart-lightbox";
-import { InteractiveChart } from "@/features/charts/interactive-chart";
+import { EChart } from "@/features/charts/echart";
 import type { InteractiveChartSpec } from "@/features/charts/types";
 
 import type { RunChart, RunChartData } from "./types";
@@ -21,13 +22,23 @@ export function ChartsSection({ charts, chartData }: ChartsSectionProps) {
 
   if (interactive?.length) {
     return (
-      <div className="grid gap-4 2xl:grid-cols-2">
+      <div className="space-y-4">
         {interactive.map((chart) => (
-          <InteractiveChart
-            key={chart.id}
-            chart={chart}
-            onExpand={(target) => setLightbox({ type: "interactive", chart: target })}
-          />
+          <div key={chart.id} className="rounded-xl border border-border/60 bg-background p-4">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h3 className="text-sm font-medium">{chart.title}</h3>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="gap-1"
+                onClick={() => setLightbox({ type: "echart", chart })}
+              >
+                <Maximize2 className="size-3.5" /> 放大
+              </Button>
+            </div>
+            <EChart option={buildChartOption(chart)} height={360} />
+          </div>
         ))}
         <ChartLightbox target={lightbox} onClose={() => setLightbox(null)} />
       </div>
@@ -39,7 +50,8 @@ export function ChartsSection({ charts, chartData }: ChartsSectionProps) {
   }
 
   return (
-    <>
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">该运行无交互数据，显示静态图。</p>
       <div className="grid gap-4 md:grid-cols-2">
         {charts.map((chart) => (
           <figure key={chart.name} className="overflow-hidden rounded-xl border border-border/60 bg-background p-4">
@@ -61,6 +73,6 @@ export function ChartsSection({ charts, chartData }: ChartsSectionProps) {
         ))}
       </div>
       <ChartLightbox target={lightbox} onClose={() => setLightbox(null)} />
-    </>
+    </div>
   );
 }

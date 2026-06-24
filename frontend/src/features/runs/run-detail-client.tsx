@@ -8,7 +8,7 @@ import { ChartsSection } from "./charts-section";
 import { LogsCollapsible } from "./logs-collapsible";
 import { ParamsSection } from "./params-section";
 import { ReportSection } from "./report-section";
-import type { RunStatus } from "./types";
+import type { RunChartData, RunStatus } from "./types";
 
 const TABS: SegmentedNavItem[] = [
   { value: "report", label: "诊断报告" },
@@ -21,9 +21,10 @@ type RunDetailClientProps = {
   run: RunStatus;
   reportText: string;
   paramsPreview: string;
+  chartData: RunChartData | null;
 };
 
-export function RunDetailClient({ run, reportText, paramsPreview }: RunDetailClientProps) {
+export function RunDetailClient({ run, reportText, paramsPreview, chartData }: RunDetailClientProps) {
   const [tab, setTab] = useState("report");
   const logsRef = useRef<HTMLDivElement>(null);
 
@@ -48,7 +49,7 @@ export function RunDetailClient({ run, reportText, paramsPreview }: RunDetailCli
             reportText={reportText}
           />
         )}
-        {tab === "charts" && <ChartsSection charts={run.charts} chartData={null} />}
+        {tab === "charts" && <ChartsSection charts={run.charts} chartData={chartData} />}
         {tab === "params" && (
           <ParamsSection
             paramsUrl={run.paramsUrl ?? ""}
