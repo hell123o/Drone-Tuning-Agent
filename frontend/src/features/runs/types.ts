@@ -53,6 +53,7 @@ export type RunStatus = Partial<RunArtifact> & {
   stderrTail?: string;
   stdout?: string;
   stderr?: string;
+  startedAt?: string;
   updatedAt?: string;
 };
 
