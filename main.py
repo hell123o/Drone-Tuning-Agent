@@ -13,7 +13,7 @@ except Exception:
 
 def main():
     parser = argparse.ArgumentParser(description="无人机飞行日志诊断助手")
-    parser.add_argument("logfile", help="日志文件路径 (.ulg 或 .bin)")
+    parser.add_argument("logfile", nargs="?", help="日志文件路径 (.ulg 或 .bin)")
     parser.add_argument("--question", "-q", default=None,
                         help="用户问题（可选，默认: 全面诊断）")
     parser.add_argument("--params", "-p", default=None,
@@ -22,6 +22,12 @@ def main():
                         help="输出目录 (默认: 日志文件同级/diagnosis_output/)")
     parser.add_argument("--hardware", default=None,
                         help="硬件配置文件路径 (.json)，默认使用 config/x760_hardware.json")
+    parser.add_argument("--profile", default=None,
+                        help="Hardware profile id for diagnosis, e.g. x760_hflow_s30_rtk")
+    parser.add_argument("--list-profiles", action="store_true",
+                        help="List available hardware profiles")
+    parser.add_argument("--view-profile", default=None,
+                        help="Print a hardware profile JSON by id")
     parser.add_argument("--api-base", default=None,
                         help="LLM API base URL")
     parser.add_argument("--api-key", default=None,
@@ -34,7 +40,24 @@ def main():
                         help="LLM max output tokens (default: 3000)")
     parser.add_argument("--metadata", default=None,
                         help="测试信息 metadata JSON 文件路径")
+    parser.add_argument("--takeoff-weight", default=None,
+                        help="实测起飞重量，示例: 4.2 或 4.2kg")
     args = parser.parse_args()
+
+    if args.list_profiles:
+        from hardware_profiles import list_profiles
+        for profile in list_profiles():
+            suffix = " (default)" if profile.get("default") else ""
+            print(f"{profile['id']}\t{profile['label']}\t{profile['relative_path']}{suffix}")
+        return
+
+    if args.view_profile:
+        from hardware_profiles import load_profile
+        print(json.dumps(load_profile(args.view_profile), indent=2, ensure_ascii=False))
+        return
+
+    if not args.logfile:
+        parser.error("logfile is required unless --list-profiles or --view-profile is used")
 
     # Resolve defaults
     api_base = args.api_base or os.environ.get("LLM_API_BASE", "http://192.168.2.158:8310/v1")
@@ -66,6 +89,9 @@ def main():
                 metadata = json.load(f)
         except Exception as exc:
             metadata = {"metadata_error": f"测试信息读取失败: {exc}"}
+    if args.takeoff_weight:
+        metadata = metadata or {}
+        metadata["takeoffWeightKg"] = args.takeoff_weight
 
     agent = DroneAgent(api_base=api_base, api_key=api_key, model=model)
     result = agent.diagnose(
@@ -73,6 +99,7 @@ def main():
         question=args.question,
         params_file=args.params,
         hardware_file=args.hardware,
+        hardware_profile=args.profile,
         output_dir=output_dir,
         metadata=metadata,
     )
@@ -105,6 +132,8 @@ def main():
         print(f"图表已保存到: {result['output_dir']}/")
     if result.get("params_file"):
         print(f"参数文件已保存: {result['params_file']}")
+    if result.get("snapshot_file"):
+        print(f"诊断快照已保存: {result['snapshot_file']}")
 
 
 if __name__ == "__main__":

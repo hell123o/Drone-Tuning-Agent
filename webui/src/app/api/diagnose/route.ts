@@ -15,6 +15,7 @@ type DiagnoseInput = {
   paramsFile?: string;
   question?: string;
   hardwareFile?: string;
+  hardwareProfile?: string;
   apiBase?: string;
   apiKey?: string;
   model?: string;
@@ -23,7 +24,7 @@ type DiagnoseInput = {
   metadata?: Record<string, string>;
 };
 
-const METADATA_FIELDS = ["testTime", "testLocation", "testProject", "testOperator", "testAircraft"] as const;
+const METADATA_FIELDS = ["testTime", "testLocation", "testProject", "testOperator", "testAircraft", "takeoffWeightKg"] as const;
 
 function readMetadataFromForm(form: FormData) {
   const metadata: Record<string, string> = {};
@@ -85,6 +86,7 @@ async function parseInput(request: NextRequest): Promise<DiagnoseInput> {
       paramsFile: String(form.get("paramsFile") || ""),
       question: String(form.get("question") || ""),
       hardwareFile: String(form.get("hardwareFile") || ""),
+      hardwareProfile: String(form.get("hardwareProfile") || ""),
       apiBase: String(form.get("apiBase") || ""),
       apiKey: String(form.get("apiKey") || ""),
       model: String(form.get("model") || ""),
@@ -109,6 +111,7 @@ function buildDoneResponse(runId: string, outputDir: string, stdout: string, std
     reportUrl: `/api/runs/${runId}/diagnosis.md`,
     pdfUrl: `/api/runs/${runId}/diagnosis.pdf`,
     paramsUrl: `/api/runs/${runId}/diagnosis_recommendations.params`,
+    snapshotUrl: `/api/runs/${runId}/snapshot.json`,
     charts: charts.map((file) => ({ name: file, url: `/api/runs/${runId}/${file}` })),
     metadata,
     finishedAt: new Date().toISOString(),
@@ -224,6 +227,7 @@ export async function POST(request: NextRequest) {
   let logfile = normalizeLocalPath(body.logfile);
   let paramsFile = normalizeLocalPath(body.paramsFile);
   const hardwareFile = normalizeLocalPath(body.hardwareFile);
+  const hardwareProfile = body.hardwareProfile?.trim();
 
   if (!logfile && !body.uploadedLog) {
     return NextResponse.json({ error: "请选择飞行日志文件，或填写日志文件路径" }, { status: 400 });
@@ -262,6 +266,7 @@ export async function POST(request: NextRequest) {
   const args = command === WINDOWS_CLI_EXE ? [logfile, "--output", outputDir] : ["main.py", logfile, "--output", outputDir];
   if (paramsFile) args.push("-p", paramsFile);
   if (body.question?.trim()) args.push("-q", body.question.trim());
+  if (hardwareProfile) args.push("--profile", hardwareProfile);
   if (hardwareFile) args.push("--hardware", hardwareFile);
   if (body.apiBase?.trim()) args.push("--api-base", body.apiBase.trim());
   if (body.model?.trim()) args.push("--model", body.model.trim());

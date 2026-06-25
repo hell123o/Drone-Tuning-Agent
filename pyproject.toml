@@ -16,5 +16,5 @@ dependencies = [
 drone-agent = "main:main"
 
 [tool.setuptools]
-py-modules = ["main", "agent"]
+py-modules = ["main", "agent", "hardware_profiles"]
 packages = ["tools"]

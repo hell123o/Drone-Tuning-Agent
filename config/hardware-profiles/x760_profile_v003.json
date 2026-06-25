@@ -1,0 +1,65 @@
+{
+  "name": "X760 + H-Flow + S30 + RTK",
+  "profile_id": "x760_hflow_s30_rtk",
+  "profile_label": "X760 + H-Flow + S30 + RTK",
+  "profile_version": "v003",
+  "firmware": "PX4",
+  "airframe": "quadrotor",
+  "wheelbase_mm": 760,
+  "empty_weight_kg": 2.85,
+  "max_takeoff_weight_kg": 6.5,
+  "typical_takeoff_weight_kg": 4.45,
+  "max_distance_m": 5000,
+  "safe_radius_m": 3000,
+  "max_speed_kmh": 55,
+  "flight_controller": "Pixhawk 6C",
+  "propeller_inch": 17,
+  "motor_kv": 340,
+  "battery": "6S LiPo, usually 2x 5000mAh 50C",
+  "payloads": [
+    {
+      "name": "H-Flow",
+      "type": "optical_flow",
+      "purpose": "low-altitude position hold aid"
+    },
+    {
+      "name": "S30",
+      "type": "payload",
+      "purpose": "mission payload affecting mass and center of gravity"
+    },
+    {
+      "name": "RTK",
+      "type": "gnss",
+      "purpose": "high-precision outdoor positioning"
+    }
+  ],
+  "tuning_goal": "stable payload flight with RTK-aware position diagnosis and conservative tuning changes",
+  "stable_px4_profile": {
+    "MC_ROLL_P": 5.8,
+    "MC_PITCH_P": 5.8,
+    "MC_ROLLRATE_P": 0.115,
+    "MC_ROLLRATE_I": 0.12,
+    "MC_ROLLRATE_D": 0.01,
+    "MC_PITCHRATE_P": 0.115,
+    "MC_PITCHRATE_I": 0.12,
+    "MC_PITCHRATE_D": 0.01,
+    "MC_YAWRATE_P": 0.2,
+    "MC_YAWRATE_I": 0.08,
+    "MC_YAWRATE_D": 0.003,
+    "IMU_GYRO_CUTOFF": 30,
+    "IMU_DGYRO_CUTOFF": 25
+  },
+  "safe_adjustment_limits": {
+    "angle_p_step": 0.4,
+    "rate_p_step": 0.015,
+    "rate_i_step": 0.02,
+    "rate_d_step": 0.001,
+    "yaw_rate_p_step": 0.05,
+    "trim_max_rad": 0.05
+  },
+  "notes": [
+    "For outdoor position-hold issues, separate RTK fix quality from attitude-control behavior.",
+    "Treat steady hover bias as possible S30 payload center-of-gravity offset before trim changes.",
+    "Use smaller PID steps than the base aircraft because payload inertia is higher."
+  ]
+}

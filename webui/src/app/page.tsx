@@ -46,6 +46,7 @@ type DiagnoseResult = {
   reportUrl: string;
   pdfUrl?: string;
   paramsUrl: string;
+  snapshotUrl?: string;
   charts: Chart[];
 };
 
@@ -60,6 +61,22 @@ type DiagnoseStatus = Partial<DiagnoseResult> & {
   stderrTail?: string;
 };
 
+type HardwareProfileSummary = {
+  id: string;
+  label: string;
+  path: string;
+  default?: boolean;
+  exists?: boolean;
+};
+
+type HardwareProfileResponse = {
+  profiles: HardwareProfileSummary[];
+  defaultProfile?: string;
+  selectedProfile?: HardwareProfileSummary & {
+    data: Record<string, unknown>;
+  };
+};
+
 export default function Home() {
   const [logfile, setLogfile] = useState("");
   const [paramsFile, setParamsFile] = useState("");
@@ -72,6 +89,7 @@ export default function Home() {
   const [testProject, setTestProject] = useState("");
   const [testOperator, setTestOperator] = useState("");
   const [testAircraft, setTestAircraft] = useState("X760");
+  const [takeoffWeightKg, setTakeoffWeightKg] = useState("");
   const [logUpload, setLogUpload] = useState<File | null>(null);
   const [paramsUpload, setParamsUpload] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -82,12 +100,55 @@ export default function Home() {
   const [result, setResult] = useState<DiagnoseResult | null>(null);
   const [report, setReport] = useState("");
   const [paramsPreview, setParamsPreview] = useState("");
+  const [hardwareProfiles, setHardwareProfiles] = useState<HardwareProfileSummary[]>([]);
+  const [hardwareProfile, setHardwareProfile] = useState("x760_base");
+  const [selectedProfileData, setSelectedProfileData] = useState<Record<string, unknown> | null>(null);
+  const [profileError, setProfileError] = useState("");
 
   const statusLabel = useMemo(() => {
     if (loading) return "诊断运行中";
     if (result) return "已生成报告";
     return "等待输入";
   }, [loading, result]);
+
+  const selectedProfile = useMemo(
+    () => hardwareProfiles.find((profile) => profile.id === hardwareProfile),
+    [hardwareProfiles, hardwareProfile],
+  );
+
+  const selectedProfileJson = useMemo(
+    () => (selectedProfileData ? JSON.stringify(selectedProfileData, null, 2) : ""),
+    [selectedProfileData],
+  );
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadProfiles() {
+      try {
+        setProfileError("");
+        const response = await fetch(`/api/hardware-profiles?id=${encodeURIComponent(hardwareProfile)}`, { cache: "no-store" });
+        const data = (await response.json()) as HardwareProfileResponse & { error?: string };
+        if (!response.ok) throw new Error(data.error || "无法读取硬件画像");
+        if (ignore) return;
+        setHardwareProfiles(data.profiles ?? []);
+        if (data.selectedProfile) {
+          setSelectedProfileData(data.selectedProfile.data);
+          setHardwareProfile(data.selectedProfile.id);
+        } else if (data.defaultProfile) {
+          setHardwareProfile(data.defaultProfile);
+        }
+      } catch (profileLoadError) {
+        if (ignore) return;
+        setProfileError(profileLoadError instanceof Error ? profileLoadError.message : String(profileLoadError));
+      }
+    }
+
+    loadProfiles();
+    return () => {
+      ignore = true;
+    };
+  }, [hardwareProfile]);
 
   async function loadResult(data: DiagnoseResult, statusText = "诊断完成") {
     setResult(data);
@@ -166,11 +227,13 @@ export default function Home() {
       form.set("apiBase", apiBase);
       form.set("apiKey", apiKey);
       form.set("model", model);
+      form.set("hardwareProfile", hardwareProfile);
       form.set("testTime", testTime);
       form.set("testLocation", testLocation);
       form.set("testProject", testProject);
       form.set("testOperator", testOperator);
       form.set("testAircraft", testAircraft);
+      form.set("takeoffWeightKg", takeoffWeightKg);
       if (logUpload) form.set("logfileUpload", logUpload);
       if (paramsUpload) form.set("paramsUpload", paramsUpload);
 
@@ -243,7 +306,16 @@ export default function Home() {
               <CardDescription>优先使用文件选择；路径输入仅作为本机高级用法。</CardDescription>
             </CardHeader>
             <CardContent>
-              <form className="space-y-5" action="/api/diagnose" method="post" encType="multipart/form-data">
+              <form
+                className="space-y-5"
+                action="/api/diagnose"
+                method="post"
+                encType="multipart/form-data"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void startDiagnose();
+                }}
+              >
                 <div className="space-y-3 rounded-xl border bg-muted/20 p-4">
                   <div>
                     <h3 className="text-sm font-medium text-foreground">测试信息</h3>
@@ -259,6 +331,10 @@ export default function Home() {
                       <Input id="testAircraft" name="testAircraft" value={testAircraft} onChange={(event) => setTestAircraft(event.target.value)} placeholder="例如 X760" />
                     </div>
                     <div className="space-y-1.5">
+                      <Label htmlFor="takeoffWeightKg">实测起飞重量</Label>
+                      <Input id="takeoffWeightKg" name="takeoffWeightKg" value={takeoffWeightKg} onChange={(event) => setTakeoffWeightKg(event.target.value)} placeholder="例如 4.2kg" />
+                    </div>
+                    <div className="space-y-1.5">
                       <Label htmlFor="testLocation">测试地点</Label>
                       <Input id="testLocation" name="testLocation" value={testLocation} onChange={(event) => setTestLocation(event.target.value)} placeholder="例如 观澜低空测试场" />
                     </div>
@@ -271,6 +347,49 @@ export default function Home() {
                     <Label htmlFor="testProject">测试项目</Label>
                     <Input id="testProject" name="testProject" value={testProject} onChange={(event) => setTestProject(event.target.value)} placeholder="例如 X760 悬停稳定性测试" />
                   </div>
+                </div>
+
+                <div className="space-y-3 rounded-xl border bg-muted/20 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-medium text-foreground">硬件画像</h3>
+                      <p className="mt-1 text-xs text-muted-foreground">选择本次诊断使用的 X760 硬件配置。</p>
+                    </div>
+                    {selectedProfile?.default && <Badge variant="secondary">默认</Badge>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="hardwareProfile">选择硬件画像</Label>
+                    <select
+                      id="hardwareProfile"
+                      name="hardwareProfile"
+                      value={hardwareProfile}
+                      onChange={(event) => setHardwareProfile(event.target.value)}
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {hardwareProfiles.map((profile) => (
+                        <option key={profile.id} value={profile.id}>
+                          {profile.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {profileError ? (
+                    <p className="text-xs text-destructive">{profileError}</p>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <Badge variant="outline" className="font-mono">
+                          {hardwareProfile}
+                        </Badge>
+                        {selectedProfile?.path && <span className="font-mono">{selectedProfile.path}</span>}
+                      </div>
+                      <ScrollArea className="h-40 rounded-lg border bg-black/40 p-3">
+                        <pre className="whitespace-pre-wrap text-xs text-emerald-100">
+                          {selectedProfileJson || "正在加载硬件画像..."}
+                        </pre>
+                      </ScrollArea>
+                    </div>
+                  )}
                 </div>
 
                 <FilePicker
@@ -430,6 +549,15 @@ export default function Home() {
                           onClick={() => window.open(result.pdfUrl ?? result.reportUrl.replace(/diagnosis\.md$/, "diagnosis.pdf"), "_blank", "noopener,noreferrer")}
                         >
                           <Download className="size-4" /> 下载 PDF
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-2"
+                          onClick={() => window.open(result.snapshotUrl ?? result.reportUrl.replace(/diagnosis\.md$/, "snapshot.json"), "_blank", "noopener,noreferrer")}
+                        >
+                          <Download className="size-4" /> 打开 Snapshot
                         </Button>
                       </div>
                     )}

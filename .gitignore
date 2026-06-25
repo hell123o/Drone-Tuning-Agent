@@ -1,0 +1,24 @@
+# Python runtime and build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Project run outputs
+webui_runs/
+drone-agent-output/
+
+# WebUI build outputs
+webui/node_modules/
+webui/.next/
+webui/out/
+webui/.turbo/
+webui/.eslintcache
+
+# Local envs
+.venv/
+.venv-win/
+
+# Logs
+*.log

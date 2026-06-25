@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import shutil
 from openai import OpenAI
 
 
@@ -33,7 +34,7 @@ class DroneAgent:
             base = f"{base}/v1"
         return base
 
-    def diagnose(self, logfile, question=None, params_file=None, hardware_file=None, output_dir=None, metadata=None):
+    def diagnose(self, logfile, question=None, params_file=None, hardware_file=None, hardware_profile=None, output_dir=None, metadata=None):
         """执行完整诊断流程。
 
         返回: {"report": str, "charts": [paths], "findings": list,
@@ -44,7 +45,14 @@ class DroneAgent:
         from tools.charts import generate_charts
         from tools.rules import run_diagnostic_rules
 
-        hardware = self._load_hardware(hardware_file)
+        if output_dir is None:
+            output_dir = os.path.join(
+                os.path.dirname(os.path.abspath(logfile)),
+                "drone-agent-output"
+            )
+        os.makedirs(output_dir, exist_ok=True)
+
+        hardware = self._load_hardware(hardware_file, hardware_profile)
 
         # 解析
         parsed = parse_log(logfile)
@@ -53,11 +61,6 @@ class DroneAgent:
         metrics = extract_metrics(parsed)
 
         # 图表
-        if output_dir is None:
-            output_dir = os.path.join(
-                os.path.dirname(os.path.abspath(logfile)),
-                "drone-agent-output"
-            )
         chart_paths = generate_charts(parsed, metrics, output_dir)
 
         # 规则诊断
@@ -65,12 +68,30 @@ class DroneAgent:
         if params_file:
             params = self._load_params(params_file)
         findings = run_diagnostic_rules(metrics, params, hardware)
+        param_updates = self._collect_param_updates(findings)
+        run_id = os.path.basename(os.path.normpath(output_dir))
+        input_files = self._snapshot_input_files(logfile, params_file, output_dir)
+        run_context = self._build_run_context(
+            run_id=run_id,
+            logfile=logfile,
+            params_file=params_file,
+            input_files=input_files,
+            metadata=metadata,
+            hardware=hardware,
+            params=params,
+            parsed=parsed,
+            metrics=metrics,
+            findings=findings,
+            param_updates=param_updates,
+        )
 
         # LLM 报告
-        report = self._generate_report(parsed, metrics, chart_paths, findings, question, params, hardware, metadata)
+        report_body = self._generate_report(parsed, metrics, chart_paths, findings, question, params, hardware, metadata)
+        report = self._compose_report(run_context, report_body)
 
         # 生成 .params 调参建议文件
         params_file_path = self._generate_params_file(findings, params_file, output_dir)
+        snapshot_path = self._write_snapshot(run_context, output_dir)
 
         return {
             "report": report,
@@ -78,6 +99,7 @@ class DroneAgent:
             "findings": findings,
             "output_dir": output_dir,
             "params_file": params_file_path,
+            "snapshot_file": snapshot_path,
         }
 
     def _generate_report(self, parsed, metrics, charts, findings, question, params, hardware=None, metadata=None):
@@ -220,11 +242,14 @@ class DroneAgent:
             ("testProject", "测试项目"),
             ("testOperator", "测试人员"),
             ("testAircraft", "测试机型"),
+            ("takeoffWeightKg", "实测起飞重量"),
         ]
         rows = []
         for key, label in labels:
             value = metadata.get(key)
             if value is not None and str(value).strip():
+                if key == "takeoffWeightKg":
+                    value = self._format_weight(value)
                 rows.append((label, str(value).strip()))
         if metadata.get("metadata_error"):
             rows.append(("测试信息读取状态", str(metadata["metadata_error"])))
@@ -235,6 +260,109 @@ class DroneAgent:
             safe_value = value.replace("|", "\\|").replace("\n", " ")
             lines.append(f"| {label} | {safe_value} |")
         return "\n".join(lines)
+
+    def _snapshot_input_files(self, logfile, params_file, output_dir):
+        input_files = {
+            "flight_log_original_path": os.path.abspath(logfile),
+            "flight_log_snapshot": None,
+            "param_original_path": os.path.abspath(params_file) if params_file else None,
+            "param_snapshot": None,
+        }
+
+        log_ext = os.path.splitext(logfile)[1] or ".ulg"
+        log_snapshot = os.path.join(output_dir, f"input{log_ext.lower()}")
+        self._copy_snapshot_file(logfile, log_snapshot)
+        input_files["flight_log_snapshot"] = os.path.basename(log_snapshot)
+
+        if params_file:
+            param_snapshot = os.path.join(output_dir, "input.params")
+            self._copy_snapshot_file(params_file, param_snapshot)
+            input_files["param_snapshot"] = os.path.basename(param_snapshot)
+
+        return input_files
+
+    def _copy_snapshot_file(self, source, destination):
+        if not source or not os.path.exists(source):
+            return
+        if os.path.abspath(source) == os.path.abspath(destination):
+            return
+        shutil.copy2(source, destination)
+
+    def _build_run_context(self, run_id, logfile, params_file, input_files, metadata, hardware, params, parsed, metrics, findings, param_updates):
+        metadata = metadata or {}
+        aircraft = self._aircraft_name(metadata, hardware)
+        takeoff_weight = self._format_weight(metadata.get("takeoffWeightKg"))
+        profile_label = hardware.get("profile_display_name") or hardware.get("profile_label") or hardware.get("name") or "unknown"
+        params_name = os.path.basename(params_file) if params_file else "未提供"
+        log_name = os.path.basename(logfile)
+
+        return {
+            "run_id": run_id,
+            "hardware_profile_id": hardware.get("profile_id") or hardware.get("profile_file") or "custom_hardware_file",
+            "hardware_profile_label": hardware.get("profile_label") or profile_label,
+            "hardware_profile_snapshot": hardware,
+            "param_snapshot": {
+                "source_file": params_name,
+                "source_path": os.path.abspath(params_file) if params_file else None,
+                "snapshot_file": input_files.get("param_snapshot"),
+                "params": params,
+            },
+            "flight_config": {
+                "aircraft": aircraft,
+                "hardware_profile": profile_label,
+                "takeoff_weight": takeoff_weight,
+                "parameter_file": params_name,
+                "flight_log": log_name,
+                "flight_log_path": os.path.abspath(logfile),
+                "flight_log_snapshot": input_files.get("flight_log_snapshot"),
+                "parsed_format": parsed.get("format"),
+                "firmware": parsed.get("firmware"),
+                "metadata": metadata,
+            },
+            "metrics": metrics,
+            "findings": findings,
+            "param_updates": param_updates,
+        }
+
+    def _compose_report(self, run_context, report_body):
+        return self._diagnosis_basis_markdown(run_context) + "\n\n" + (report_body or "").lstrip()
+
+    def _diagnosis_basis_markdown(self, run_context):
+        config = run_context.get("flight_config", {})
+        return "\n".join([
+            "本次诊断基于：",
+            f"- 机体：{config.get('aircraft') or '未知'}",
+            f"- 硬件画像：{config.get('hardware_profile') or '未知'}",
+            f"- 实测起飞重量：{config.get('takeoff_weight') or '未填写'}",
+            f"- 参数文件：{config.get('parameter_file') or '未提供'}",
+            f"- 飞行日志：{config.get('flight_log') or '未知'}",
+        ])
+
+    def _write_snapshot(self, run_context, output_dir):
+        snapshot_path = os.path.join(output_dir, "snapshot.json")
+        with open(snapshot_path, "w", encoding="utf-8") as f:
+            json.dump(run_context, f, indent=2, ensure_ascii=False, default=str)
+        return snapshot_path
+
+    def _aircraft_name(self, metadata, hardware):
+        value = (metadata or {}).get("testAircraft")
+        if value and str(value).strip():
+            return str(value).strip()
+        for key in ("aircraft", "model", "profile_label", "name"):
+            value = (hardware or {}).get(key)
+            if value and str(value).strip():
+                text = str(value).strip()
+                match = re.match(r"^(X\d+)", text)
+                return match.group(1) if match else text
+        return "未知"
+
+    def _format_weight(self, value):
+        if value is None or str(value).strip() == "":
+            return "未填写"
+        text = str(value).strip()
+        if text.lower().endswith("kg"):
+            return text
+        return f"{text}kg"
 
     def _rule_only_report(self, parsed, metrics, findings):
         """LLM 不可用时的降级报告。"""
@@ -327,14 +455,20 @@ class DroneAgent:
             return f"{value:.6g}"
         return str(value)
 
-    def _load_hardware(self, path=None):
+    def _load_hardware(self, path=None, profile_id=None):
         """加载硬件配置。默认读取 config/x760_hardware.json。"""
-        if path is None:
-            path = os.path.join(os.path.dirname(__file__), "config", "x760_hardware.json")
+        from hardware_profiles import load_profile
+        if profile_id or not path:
+            return load_profile(profile_id)
         if not path or not os.path.exists(path):
             return {}
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            hardware = json.load(f)
+        hardware.setdefault("profile_id", os.path.splitext(os.path.basename(path))[0])
+        hardware.setdefault("profile_label", hardware.get("name") or hardware["profile_id"])
+        hardware.setdefault("profile_display_name", hardware.get("profile_label"))
+        hardware.setdefault("profile_file", os.path.relpath(path, os.path.dirname(__file__)))
+        return hardware
 
     def _load_params(self, path):
         """加载 .params 文件。"""

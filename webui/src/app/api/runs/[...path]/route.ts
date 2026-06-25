@@ -8,6 +8,7 @@ const RUNS_ROOT = path.join(PROJECT_ROOT, "webui_runs");
 const CONTENT_TYPES: Record<string, string> = {
   ".md": "text/markdown; charset=utf-8",
   ".params": "text/plain; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
   ".pdf": "application/pdf",
   ".png": "image/png",
 };

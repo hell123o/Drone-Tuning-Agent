@@ -1,0 +1,29 @@
+{
+  "default": "x760_base",
+  "profiles": [
+    {
+      "id": "x760_base",
+      "label": "X760 base",
+      "report_label": "base",
+      "path": "../x760_hardware.json"
+    },
+    {
+      "id": "x760_hflow",
+      "label": "X760 + H-Flow",
+      "report_label": "v1 H-Flow",
+      "path": "x760_profile_v001.json"
+    },
+    {
+      "id": "x760_hflow_s30",
+      "label": "X760 + H-Flow + S30",
+      "report_label": "v2 H-Flow + S30",
+      "path": "x760_profile_v002.json"
+    },
+    {
+      "id": "x760_hflow_s30_rtk",
+      "label": "X760 + H-Flow + S30 + RTK",
+      "report_label": "v4 H-Flow + S30 + RTK",
+      "path": "x760_profile_v003.json"
+    }
+  ]
+}

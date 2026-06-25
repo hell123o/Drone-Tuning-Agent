@@ -30,6 +30,13 @@ python main.py flight.log.ulg -p 1.params
 # 使用默认 X760 硬件画像，并基于原始参数文件输出调参后的 .params
 python main.py flight.log.ulg -p 1.params
 
+# 列出/查看硬件画像
+python main.py --list-profiles
+python main.py --view-profile x760_hflow_s30
+
+# 为本次诊断选择硬件画像
+python main.py flight.log.ulg --profile x760_hflow_s30_rtk
+
 # 指定其他硬件画像
 python main.py flight.log.ulg --hardware config/x760_hardware.json
 
