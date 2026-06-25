@@ -64,9 +64,12 @@ class DroneAgent:
         chart_paths = generate_charts(parsed, metrics, output_dir)
 
         # 规则诊断
-        params = {}
+        # 以日志解析出的参数为底（与 LLM 报告/key_parameters 同源），用户显式传入的
+        # -p .params 文件覆盖在上。否则规则引擎读不到当前值，会回退到默认值，导致
+        # 报告里的“当前值”与参数文件里算出的建议值不一致。
+        params = dict(parsed.get("parameters", {}))
         if params_file:
-            params = self._load_params(params_file)
+            params.update(self._load_params(params_file))
         findings = run_diagnostic_rules(metrics, params, hardware)
         param_updates = self._collect_param_updates(findings)
         run_id = os.path.basename(os.path.normpath(output_dir))
