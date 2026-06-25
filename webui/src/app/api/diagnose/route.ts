@@ -111,6 +111,7 @@ function buildDoneResponse(runId: string, outputDir: string, stdout: string, std
     reportUrl: `/api/runs/${runId}/diagnosis.md`,
     pdfUrl: `/api/runs/${runId}/diagnosis.pdf`,
     paramsUrl: `/api/runs/${runId}/diagnosis_recommendations.params`,
+    llmParamsUrl: `/api/runs/${runId}/diagnosis_recommendations_llm.params`,
     snapshotUrl: `/api/runs/${runId}/snapshot.json`,
     charts: charts.map((file) => ({ name: file, url: `/api/runs/${runId}/${file}` })),
     metadata,

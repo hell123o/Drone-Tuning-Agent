@@ -92,8 +92,15 @@ class DroneAgent:
         report_body = self._generate_report(parsed, metrics, chart_paths, findings, question, params, hardware, metadata)
         report = self._compose_report(run_context, report_body)
 
-        # 生成 .params 调参建议文件
-        params_file_path = self._generate_params_file(findings, params_file, output_dir)
+        # 生成 .params 调参建议文件：
+        #   规则引擎版（保守、带安全步长）和 LLM 版（按机型综合判断）并存，用户自选。
+        rule_updates = self._collect_param_updates(findings)
+        llm_updates = self._extract_llm_param_updates(report_body)
+        run_context["llm_param_updates"] = llm_updates
+        params_file_path = self._generate_params_file(rule_updates, params_file, output_dir)
+        llm_params_file_path = self._generate_params_file(
+            llm_updates, params_file, output_dir,
+            output_name="diagnosis_recommendations_llm.params")
         snapshot_path = self._write_snapshot(run_context, output_dir)
 
         return {
@@ -102,6 +109,7 @@ class DroneAgent:
             "findings": findings,
             "output_dir": output_dir,
             "params_file": params_file_path,
+            "llm_params_file": llm_params_file_path,
             "snapshot_file": snapshot_path,
         }
 
@@ -420,11 +428,14 @@ class DroneAgent:
 
         return "\n".join(lines)
 
-    def _generate_params_file(self, findings, base_params_path, output_dir):
-        """根据规则引擎的结构化建议生成 .params 文件。"""
+    def _generate_params_file(self, updates, base_params_path, output_dir,
+                              output_name="diagnosis_recommendations.params"):
+        """根据结构化参数建议生成 .params 文件。
+
+        updates: {参数名: 目标值}。来源可以是规则引擎或 LLM，本方法只负责写文件。
+        """
         os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, "diagnosis_recommendations.params")
-        updates = self._collect_param_updates(findings)
+        output_path = os.path.join(output_dir, output_name)
         if not updates:
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write("# Drone Tuning Agent - 本次未生成参数修改建议\n")
@@ -445,6 +456,31 @@ class DroneAgent:
         with open(output_path, "w", encoding="utf-8") as f:
             f.writelines(lines)
         return output_path
+
+    def _extract_llm_param_updates(self, report_body):
+        """从 LLM 报告末尾的 ```params-json 围栏块提取建议参数。
+
+        解析失败或无块时返回 {}（降级，不阻塞诊断）。只保留数值类型的项，
+        避免把单位/范围/注释等写入 .params。
+        """
+        if not report_body:
+            return {}
+        match = re.search(r"```params-json\s*(\{.*?\})\s*```", report_body, re.DOTALL)
+        if not match:
+            return {}
+        try:
+            raw = json.loads(match.group(1))
+        except (ValueError, TypeError):
+            return {}
+        if not isinstance(raw, dict):
+            return {}
+        updates = {}
+        for name, value in raw.items():
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, (int, float)):
+                updates[str(name)] = value
+        return updates
 
     def _collect_param_updates(self, findings):
         """汇总规则结论中的 param_updates，后面的规则覆盖前面的同名参数。"""

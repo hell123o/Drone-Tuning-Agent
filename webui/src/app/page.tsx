@@ -46,6 +46,7 @@ type DiagnoseResult = {
   reportUrl: string;
   pdfUrl?: string;
   paramsUrl: string;
+  llmParamsUrl?: string;
   snapshotUrl?: string;
   charts: Chart[];
 };
@@ -104,6 +105,7 @@ export default function Home() {
   const [result, setResult] = useState<DiagnoseResult | null>(null);
   const [report, setReport] = useState("");
   const [paramsPreview, setParamsPreview] = useState("");
+  const [llmParamsPreview, setLlmParamsPreview] = useState("");
   const [hardwareProfiles, setHardwareProfiles] = useState<HardwareProfileSummary[]>([]);
   const [hardwareProfile, setHardwareProfile] = useState("x760_base");
   const [selectedProfileData, setSelectedProfileData] = useState<Record<string, unknown> | null>(null);
@@ -157,12 +159,14 @@ export default function Home() {
   async function loadResult(data: DiagnoseResult, statusText = "诊断完成") {
     setResult(data);
     setClientStatus(statusText);
-    const [reportText, paramsText] = await Promise.all([
+    const [reportText, paramsText, llmParamsText] = await Promise.all([
       fetch(data.reportUrl).then((res) => res.text()),
       fetch(data.paramsUrl).then((res) => res.text()),
+      data.llmParamsUrl ? fetch(data.llmParamsUrl).then((res) => res.text()).catch(() => "") : Promise.resolve(""),
     ]);
     setReport(reportText);
     setParamsPreview(paramsText);
+    setLlmParamsPreview(llmParamsText);
     setProgress(100);
     setLoading(false);
   }
@@ -222,6 +226,7 @@ export default function Home() {
     setResult(null);
     setReport("");
     setParamsPreview("");
+    setLlmParamsPreview("");
 
     try {
       const form = new FormData();
@@ -638,36 +643,69 @@ export default function Home() {
               </TabsContent>
 
               <TabsContent value="params" className="mt-4">
-                <Card>
-                  <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <CardTitle className="flex items-center gap-2">
-                        <FileSliders className="size-5" /> diagnosis_recommendations.params
-                      </CardTitle>
-                      <CardDescription>可导入 QGroundControl 的参数建议文件。</CardDescription>
-                    </div>
-                    {result && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                        onClick={() => window.open(result.paramsUrl, "_blank", "noopener,noreferrer")}
-                      >
-                        <Download className="size-4" /> 下载参数
-                      </Button>
-                    )}
-                  </CardHeader>
-                  <CardContent>
-                    <ScrollArea className="h-[420px] rounded-xl border bg-black/40 p-4">
-                      {paramsPreview ? (
-                        <pre className="text-sm text-emerald-100">{paramsPreview}</pre>
-                      ) : (
-                        <EmptyState title="暂无参数文件" description="诊断完成后这里显示建议参数。" />
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <Card>
+                    <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <FileSliders className="size-5" /> 规则引擎·保守版
+                        </CardTitle>
+                        <CardDescription>diagnosis_recommendations.params — 确定性规则、小步长，安全优先。</CardDescription>
+                      </div>
+                      {result && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-2"
+                          onClick={() => window.open(result.paramsUrl, "_blank", "noopener,noreferrer")}
+                        >
+                          <Download className="size-4" /> 下载
+                        </Button>
                       )}
-                    </ScrollArea>
-                  </CardContent>
-                </Card>
+                    </CardHeader>
+                    <CardContent>
+                      <ScrollArea className="h-[420px] rounded-xl border bg-black/40 p-4">
+                        {paramsPreview ? (
+                          <pre className="text-sm text-emerald-100">{paramsPreview}</pre>
+                        ) : (
+                          <EmptyState title="暂无参数文件" description="诊断完成后这里显示建议参数。" />
+                        )}
+                      </ScrollArea>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <FileSliders className="size-5" /> LLM 建议版
+                        </CardTitle>
+                        <CardDescription>diagnosis_recommendations_llm.params — 结合机型综合判断，未做安全限幅，上机请谨慎。</CardDescription>
+                      </div>
+                      {result?.llmParamsUrl && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-2"
+                          onClick={() => window.open(result.llmParamsUrl, "_blank", "noopener,noreferrer")}
+                        >
+                          <Download className="size-4" /> 下载
+                        </Button>
+                      )}
+                    </CardHeader>
+                    <CardContent>
+                      <ScrollArea className="h-[420px] rounded-xl border bg-black/40 p-4">
+                        {llmParamsPreview ? (
+                          <pre className="text-sm text-amber-100">{llmParamsPreview}</pre>
+                        ) : (
+                          <EmptyState title="暂无 LLM 参数文件" description="诊断完成后这里显示 LLM 建议参数。" />
+                        )}
+                      </ScrollArea>
+                    </CardContent>
+                  </Card>
+                </div>
               </TabsContent>
 
               <TabsContent value="logs" className="mt-4">

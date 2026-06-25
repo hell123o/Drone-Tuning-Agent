@@ -131,7 +131,9 @@ def main():
     if result.get("charts"):
         print(f"图表已保存到: {result['output_dir']}/")
     if result.get("params_file"):
-        print(f"参数文件已保存: {result['params_file']}")
+        print(f"参数文件已保存(规则引擎): {result['params_file']}")
+    if result.get("llm_params_file"):
+        print(f"参数文件已保存(LLM建议): {result['llm_params_file']}")
     if result.get("snapshot_file"):
         print(f"诊断快照已保存: {result['snapshot_file']}")
 
