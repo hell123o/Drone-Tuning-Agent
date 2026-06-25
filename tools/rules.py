@@ -2,6 +2,17 @@
 import numpy as np
 
 
+# --- 外设健康阈值（保守通用值，偏离才报警；缺数据时不下健康结论） ---
+OF_QUALITY_MIN = 100          # PX4 光流 quality 0-255，低于此偏低
+OF_INNOV_RATIO_MAX = 1.0      # 光流 EKF 创新比偏高阈值
+RANGE_SIGNAL_QUALITY_MIN = 30  # 测距信号质量 0-100
+RANGE_GAP_RATIO_MAX = 0.2     # 测距不连续比例 >20% 偏高
+RTK_FIX_RATIO_MIN = 0.5       # RTK fixed+float 占比 <50% 偏低
+GPS_SATS_MIN = 10             # 卫星数下限
+GPS_EPH_MAX_M = 1.0           # 水平精度 (m) 上限
+GPS_EPV_MAX_M = 1.5           # 垂直精度 (m) 上限
+
+
 def run_diagnostic_rules(metrics: dict, params: dict = None, hardware: dict = None) -> list:
     """运行诊断规则，返回结论列表。
 
@@ -16,6 +27,7 @@ def run_diagnostic_rules(metrics: dict, params: dict = None, hardware: dict = No
     findings.extend(_check_pid(metrics, params or {}, hardware or {}))
     findings.extend(_check_parameters(params, metrics, hardware or {}))
     findings.extend(_check_hardware_context(metrics, hardware or {}))
+    findings.extend(_check_peripheral_consistency(metrics, params or {}, hardware or {}))
     return findings
 
 
@@ -309,6 +321,209 @@ def _check_hardware_context(metrics: dict, hardware: dict) -> list:
                      "message": message,
                      "recommendation": recommendation})
     return findings
+
+
+# --- params/log 外设一致性检查（declared/configured/observed/healthy 四层，只读不改参数） ---
+
+def _param_present(params: dict, *names) -> bool:
+    """params 中是否存在任一指定参数（不要求特定值，仅作弱证据之一）。"""
+    return any(n in params for n in names)
+
+
+def _param_truthy(params: dict, name) -> bool:
+    """参数存在且为非零/真值（如 EKF2_OF_CTRL=1）。"""
+    val = params.get(name)
+    if val is None:
+        return False
+    try:
+        return float(val) != 0.0
+    except (TypeError, ValueError):
+        return str(val).strip().lower() not in {"", "0", "false", "off", "disabled"}
+
+
+def _declared(hardware: dict, *, name=None, type_=None) -> bool:
+    """profile payloads 中是否声明了该外设（按 name 或 type 匹配）。"""
+    for p in hardware.get("payloads", []) or []:
+        if name and str(p.get("name", "")).strip().lower() == name.lower():
+            return True
+        if type_ and str(p.get("type", "")).strip().lower() == type_.lower():
+            return True
+    return False
+
+
+def _eval_hflow(metrics, params, hardware):
+    issues = []
+    declared = _declared(hardware, name="H-Flow", type_="optical_flow")
+
+    of_params = ["EKF2_OF_CTRL", "UAVCAN_SUB_FLOW", "UAVCAN_SUB_RNG", "SENS_FLOW_ROT",
+                 "EKF2_OF_POS_X", "EKF2_OF_POS_Y", "EKF2_OF_POS_Z"]
+    present = [p for p in of_params if p in params]
+    configured = _param_truthy(params, "EKF2_OF_CTRL") or len(present) > 0
+    if declared and not _param_truthy(params, "EKF2_OF_CTRL"):
+        issues.append("EKF2_OF_CTRL 未启用（光流融合可能未开）")
+    missing = [p for p in of_params if p not in params]
+    if configured and missing:
+        issues.append("缺少光流相关参数: " + ", ".join(missing))
+
+    of = (metrics.get("peripherals", {}) or {}).get("optical_flow", {}) or {}
+    observed = (of.get("samples") or 0) > 0
+    healthy = None
+    if observed:
+        healthy = True
+        q = of.get("quality_mean")
+        if q is not None and q < OF_QUALITY_MIN:
+            healthy = False
+            issues.append(f"光流质量偏低 (quality_mean={q:.0f} < {OF_QUALITY_MIN})")
+    elif declared or configured:
+        issues.append("日志中未观测到 optical_flow 数据（检查接线/供电/驱动）")
+
+    issues.append("提示：飞行前确认光流测距质量、地面纹理与光照充足")
+    return _peripheral_record(declared, configured, observed, healthy, issues)
+
+
+def _eval_s30(metrics, params, hardware):
+    issues = []
+    declared = _declared(hardware, name="S30")
+
+    # S30/RPLIDAR 经 TELEM2 / Onboard MAVLink 接入
+    tel2 = any(str(params.get(k, "")).upper().find("TELEM2") >= 0 for k in params
+               if str(k).startswith("MAV_") and str(k).endswith("_CONFIG"))
+    configured = tel2 or _param_present(params, "SER_TEL2_BAUD") or _param_truthy(params, "MAV_1_CONFIG")
+    if declared and not configured:
+        issues.append("未发现 TELEM2 / Onboard MAVLink 配置（S30 可能未接入）")
+
+    ds = (metrics.get("peripherals", {}) or {}).get("distance_sensor", {}) or {}
+    observed = (ds.get("samples") or 0) > 0
+    healthy = None
+    if observed:
+        healthy = True
+        sig = ds.get("signal_quality_mean")
+        if sig is not None and sig < RANGE_SIGNAL_QUALITY_MIN:
+            healthy = False
+            issues.append(f"测距信号质量偏低 (signal_quality_mean={sig:.0f} < {RANGE_SIGNAL_QUALITY_MIN})")
+        gap = ds.get("gap_ratio")
+        if gap is not None and gap > RANGE_GAP_RATIO_MAX:
+            healthy = False
+            issues.append(f"测距数据不连续 (gap_ratio={gap:.2f} > {RANGE_GAP_RATIO_MAX})")
+    elif declared or configured:
+        issues.append("日志中未观测到 distance_sensor / OBSTACLE_DISTANCE 数据")
+
+    issues.append("提示：前后左右方向映射需地面验证，无法仅凭单次日志判定")
+    return _peripheral_record(declared, configured, observed, healthy, issues)
+
+
+def _eval_rtk(metrics, params, hardware):
+    issues = []
+    declared = _declared(hardware, name="RTK", type_="gnss")
+    configured = _param_present(params, "GPS_1_CONFIG", "GPS_UBX_DYNMODEL", "GPS_1_GNSS", "GPS_YAW_OFFSET")
+    if declared and not configured:
+        issues.append("未发现 GPS/RTK 相关参数配置")
+
+    gps = (metrics.get("peripherals", {}) or {}).get("gps", {}) or {}
+    observed = (gps.get("samples") or 0) > 0
+    healthy = None
+    if observed:
+        healthy = True
+        fixed = gps.get("rtk_fixed_ratio") or 0.0
+        floatr = gps.get("rtk_float_ratio") or 0.0
+        if declared and (fixed + floatr) < RTK_FIX_RATIO_MIN:
+            healthy = False
+            issues.append(f"RTK fixed+float 占比偏低 ({(fixed + floatr) * 100:.0f}% < {RTK_FIX_RATIO_MIN * 100:.0f}%)")
+        sats = gps.get("satellites_used_min")
+        if sats is not None and sats < GPS_SATS_MIN:
+            healthy = False
+            issues.append(f"可用卫星数偏少 (min={sats} < {GPS_SATS_MIN})")
+        eph = gps.get("eph_mean")
+        if eph is not None and eph > GPS_EPH_MAX_M:
+            healthy = False
+            issues.append(f"水平精度偏差大 (eph_mean={eph:.2f}m > {GPS_EPH_MAX_M}m)")
+        epv = gps.get("epv_mean")
+        if epv is not None and epv > GPS_EPV_MAX_M:
+            healthy = False
+            issues.append(f"垂直精度偏差大 (epv_mean={epv:.2f}m > {GPS_EPV_MAX_M}m)")
+    elif declared or configured:
+        issues.append("日志中未观测到 GPS 数据")
+
+    issues.append("提示：Position 模式漂移是否改善需对比飞行验证")
+    return _peripheral_record(declared, configured, observed, healthy, issues)
+
+
+def _peripheral_record(declared, configured, observed, healthy, issues):
+    return {
+        "declared": bool(declared),
+        "configured": bool(configured),
+        "observed": bool(observed),
+        "healthy": healthy,  # True / False / None(无数据未知)
+        "issues": issues,
+    }
+
+
+def evaluate_peripherals(metrics: dict, params: dict = None, hardware: dict = None) -> dict:
+    """对每个外设做 declared/configured/observed/healthy 四层判断，返回结构化结果。
+
+    供规则引擎生成 findings 与 agent 输出 snapshot 共用。只读，不产生参数修改。
+    """
+    metrics = metrics or {}
+    params = params or {}
+    hardware = hardware or {}
+    return {
+        "hflow_optical_flow": _eval_hflow(metrics, params, hardware),
+        "s30_rangefinder": _eval_s30(metrics, params, hardware),
+        "rtk_gnss": _eval_rtk(metrics, params, hardware),
+    }
+
+
+def _check_peripheral_consistency(metrics: dict, params: dict = None, hardware: dict = None) -> list:
+    """根据四层一致性结果生成 findings（只读，无 param_updates）。
+
+    仅对「已声明 / 已配置 / 已观测」之一为真的外设产出结论，避免对实机不存在的外设误报。
+    """
+    findings = []
+    labels = {
+        "hflow_optical_flow": "H-Flow 光流",
+        "s30_rangefinder": "S30 测距",
+        "rtk_gnss": "RTK",
+    }
+    evals = evaluate_peripherals(metrics, params, hardware)
+    for key, rec in evals.items():
+        if not (rec["declared"] or rec["configured"] or rec["observed"]):
+            continue  # 实机大概率无此外设，不报
+        label = labels[key]
+        layers = (f"声明={_yn(rec['declared'])} 配置={_yn(rec['configured'])} "
+                  f"观测={_yn(rec['observed'])} 健康={_health_text(rec['healthy'])}")
+        # 实质性 issues（排除“提示/需验证”一类）
+        substantive = [i for i in rec["issues"] if not i.startswith("提示")]
+        inconsistent = (
+            (rec["declared"] and not rec["configured"]) or
+            (rec["configured"] and not rec["observed"]) or
+            (rec["healthy"] is False)
+        )
+        if inconsistent:
+            findings.append({
+                "severity": "warning",
+                "category": "peripheral",
+                "message": f"{label} 一致性存在断层（{layers}）",
+                "recommendation": "；".join(rec["issues"]) if rec["issues"] else "核对声明/配置/接线/数据质量",
+            })
+        else:
+            msg = f"{label} 一致性正常（{layers}）"
+            findings.append({
+                "severity": "info",
+                "category": "peripheral",
+                "message": msg,
+                "recommendation": "；".join(i for i in rec["issues"] if i.startswith("提示")) or None,
+            })
+    return findings
+
+
+def _yn(value) -> str:
+    return "是" if value else "否"
+
+
+def _health_text(value) -> str:
+    if value is None:
+        return "未知"
+    return "健康" if value else "异常"
 
 
 def _as_float(value, default):

@@ -53,7 +53,23 @@ def parse_ulg(path: str) -> dict:
         "vehicle_attitude_ground_truth",
         "vehicle_air_data",
         "ekf2_innovations",
+        # 外设一致性检查所需 topic（H-Flow 光流 / S30 测距 / RTK GPS）
+        "optical_flow",
+        "vehicle_optical_flow",   # 较新 PX4 命名
+        "distance_sensor",
+        "vehicle_gps_position",
+        "sensor_gps",             # 较新 PX4 命名
     ]
+
+    # 这些 topic 的关键字段必须进入 data_subset（默认只取前 8 个非时间字段，
+    # GPS 的 fix_type/satellites_used/eph/epv 可能排在后面而被漏掉）。
+    must_include_fields = {
+        "vehicle_gps_position": ["fix_type", "satellites_used", "eph", "epv"],
+        "sensor_gps": ["fix_type", "satellites_used", "eph", "epv"],
+        "optical_flow": ["quality", "pixel_flow_x_integral", "pixel_flow_y_integral"],
+        "vehicle_optical_flow": ["quality", "pixel_flow_x_integral", "pixel_flow_y_integral"],
+        "distance_sensor": ["current_distance", "signal_quality", "min_distance", "max_distance"],
+    }
 
     raw_sample = {}
     for name in key_names:
@@ -66,24 +82,33 @@ def parse_ulg(path: str) -> dict:
             sample = {"fields": list(d.data.keys()), "count": 0}
             arr0 = np.asarray(d.data[non_ts_fields[0]])
             sample["count"] = len(arr0)
-            # Store first/last (3 points)
-            for fk in non_ts_fields[:4]:
+            forced = [f for f in must_include_fields.get(name, []) if f in d.data]
+            # Store first/last (3 points); always include this topic's key fields.
+            for fk in list(dict.fromkeys(non_ts_fields[:4] + forced)):
                 arr = np.asarray(d.data[fk])
                 try:
                     sample[f"first_{fk}"] = arr[:3].tolist()
                     sample[f"last_{fk}"] = arr[-3:].tolist()
                 except (TypeError, AttributeError):
                     sample[f"{fk}"] = str(arr)
-            # For analysis: uniform subset for large datasets
+            # For analysis: uniform subset. Build it for large datasets, and always
+            # for peripheral topics (consistency check needs the full series even
+            # at low sample rates, e.g. GPS fix_type/eph).
             max_subset = 500
+            subset_fields = list(dict.fromkeys(non_ts_fields[:8] + forced))
             if sample["count"] > max_subset:
                 indices = np.linspace(0, sample["count"] - 1, max_subset, dtype=int)
+            elif forced:
+                indices = np.arange(sample["count"])
+            else:
+                indices = None
+            if indices is not None:
                 subset = {}
-                for fk in non_ts_fields[:8]:
+                for fk in subset_fields:
                     try:
                         arr = np.asarray(d.data[fk])
                         subset[fk] = arr[indices].tolist()
-                    except (TypeError, AttributeError):
+                    except (TypeError, AttributeError, IndexError):
                         pass
                 if subset:
                     sample["data_subset"] = subset

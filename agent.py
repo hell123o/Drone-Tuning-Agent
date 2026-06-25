@@ -327,7 +327,13 @@ class DroneAgent:
             "metrics": metrics,
             "findings": findings,
             "param_updates": param_updates,
+            "peripheral_consistency": self._evaluate_peripherals(metrics, params, hardware),
         }
+
+    def _evaluate_peripherals(self, metrics, params, hardware):
+        """外设 params/log 一致性四层判断（只读），复用规则引擎逻辑。"""
+        from tools.rules import evaluate_peripherals
+        return evaluate_peripherals(metrics, params, hardware)
 
     def _compose_report(self, run_context, report_body):
         return self._diagnosis_basis_markdown(run_context) + "\n\n" + (report_body or "").lstrip()

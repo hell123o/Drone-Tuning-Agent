@@ -16,9 +16,109 @@ def extract_metrics(parsed_log: dict) -> dict:
     metrics["battery"] = _compute_battery(raw)
     metrics["pid_response"] = _compute_pid_response(raw, parsed_log)
     metrics["hover_segments"] = _find_hover_segments(raw, parsed_log)
+    metrics["peripherals"] = _compute_peripherals(raw)
     metrics["flight_summary"] = _flight_summary(parsed_log)
 
     return metrics
+
+
+def _compute_peripherals(raw: dict) -> dict:
+    """提取外设观测指标（光流 / 测距 / GPS），用于 params/log 一致性检查。
+
+    每个子项在缺数据时返回 samples=0 的空结构，绝不抛错。
+    """
+    return {
+        "optical_flow": _compute_optical_flow(raw),
+        "distance_sensor": _compute_distance_sensor(raw),
+        "gps": _compute_gps(raw),
+    }
+
+
+def _compute_optical_flow(raw: dict) -> dict:
+    """光流质量观测。topic: optical_flow / vehicle_optical_flow。"""
+    result = {"samples": 0, "quality_mean": None, "quality_min": None}
+    quality = None
+    for ds in ("optical_flow", "vehicle_optical_flow"):
+        quality = _get_subset(raw, ds, "quality")
+        if quality is not None and len(quality) > 0:
+            break
+    if quality is None or len(quality) == 0:
+        return result
+    quality = np.asarray(quality, dtype=float)
+    result["samples"] = int(len(quality))
+    result["quality_mean"] = float(np.mean(quality))
+    result["quality_min"] = float(np.min(quality))
+    return result
+
+
+def _compute_distance_sensor(raw: dict) -> dict:
+    """测距传感器观测：均值/范围/信号质量/连续性（gap_ratio）。topic: distance_sensor。"""
+    result = {
+        "samples": 0, "distance_mean_m": None, "distance_min_m": None,
+        "distance_max_m": None, "signal_quality_mean": None, "gap_ratio": None,
+    }
+    dist = _get_subset(raw, "distance_sensor", "current_distance")
+    if dist is None or len(dist) == 0:
+        return result
+    dist = np.asarray(dist, dtype=float)
+    result["samples"] = int(len(dist))
+    result["distance_mean_m"] = float(np.mean(dist))
+    result["distance_min_m"] = float(np.min(dist))
+    result["distance_max_m"] = float(np.max(dist))
+
+    sig = _get_subset(raw, "distance_sensor", "signal_quality")
+    if sig is not None and len(sig) > 0:
+        result["signal_quality_mean"] = float(np.mean(np.asarray(sig, dtype=float)))
+
+    # 连续性：相邻样本出现 0/无效或大跳变（>2m）的比例，作为不连续 (gap) 的弱信号。
+    if len(dist) > 1:
+        invalid = dist <= 0
+        jumps = np.abs(np.diff(dist)) > 2.0
+        gap = float((np.count_nonzero(invalid) + np.count_nonzero(jumps)) / len(dist))
+        result["gap_ratio"] = min(gap, 1.0)
+    return result
+
+
+def _compute_gps(raw: dict) -> dict:
+    """GPS/RTK 观测：fix 类型占比、卫星数、eph/epv。topic: vehicle_gps_position / sensor_gps。
+
+    PX4 fix_type: 3=3D, 4=GPS+DR, 5=RTK float, 6=RTK fixed。
+    """
+    result = {
+        "samples": 0, "fix_type_max": None,
+        "rtk_float_ratio": None, "rtk_fixed_ratio": None,
+        "satellites_used_mean": None, "satellites_used_min": None,
+        "eph_mean": None, "epv_mean": None,
+    }
+    fix = None
+    src = None
+    for ds in ("vehicle_gps_position", "sensor_gps"):
+        fix = _get_subset(raw, ds, "fix_type")
+        if fix is not None and len(fix) > 0:
+            src = ds
+            break
+    if fix is None or len(fix) == 0:
+        return result
+    fix = np.asarray(fix, dtype=float)
+    n = len(fix)
+    result["samples"] = int(n)
+    result["fix_type_max"] = int(np.max(fix))
+    result["rtk_float_ratio"] = float(np.count_nonzero(fix == 5) / n)
+    result["rtk_fixed_ratio"] = float(np.count_nonzero(fix == 6) / n)
+
+    sats = _get_subset(raw, src, "satellites_used")
+    if sats is not None and len(sats) > 0:
+        sats = np.asarray(sats, dtype=float)
+        result["satellites_used_mean"] = float(np.mean(sats))
+        result["satellites_used_min"] = int(np.min(sats))
+
+    eph = _get_subset(raw, src, "eph")
+    if eph is not None and len(eph) > 0:
+        result["eph_mean"] = float(np.mean(np.asarray(eph, dtype=float)))
+    epv = _get_subset(raw, src, "epv")
+    if epv is not None and len(epv) > 0:
+        result["epv_mean"] = float(np.mean(np.asarray(epv, dtype=float)))
+    return result
 
 
 def _get_subset(raw, dataset, field):
