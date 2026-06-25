@@ -1,0 +1,16 @@
+{
+  "name": "X760 heavy-lift quad",
+  "firmware": "PX4",
+  "airframe": "quadrotor",
+  "wheelbase_mm": 760,
+  "empty_weight_kg": 2.8,
+  "max_takeoff_weight_kg": 6.5,
+  "typical_takeoff_weight_kg": 4.0,
+  "max_distance_m": 5000,
+  "safe_radius_m": 3000,
+  "max_speed_kmh": 60,
+  "flight_controller": "Pixhawk 6C",
+  "propeller_inch": 17,
+  "motor_kv": 340,
+  "battery": "6S LiPo, usually 2x 5000mAh 50C"
+}

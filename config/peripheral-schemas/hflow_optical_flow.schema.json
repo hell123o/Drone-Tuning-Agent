@@ -1,0 +1,21 @@
+{
+  "schema_id": "hflow_optical_flow",
+  "name": "H-Flow",
+  "type": "optical_flow",
+  "purpose": "low-altitude position hold aid",
+  "log_topics": ["optical_flow", "vehicle_optical_flow", "ekf2_innovations"],
+  "params": {
+    "EKF2_OF_CTRL": "enable optical-flow fusion",
+    "UAVCAN_SUB_FLOW": "subscribe optical-flow over UAVCAN",
+    "UAVCAN_SUB_RNG": "subscribe range over UAVCAN",
+    "SENS_FLOW_ROT": "flow sensor mounting rotation",
+    "EKF2_OF_POS_X": "flow sensor position offset X (m)",
+    "EKF2_OF_POS_Y": "flow sensor position offset Y (m)",
+    "EKF2_OF_POS_Z": "flow sensor position offset Z (m)"
+  },
+  "health_reference": {
+    "quality_min": 100,
+    "innovation_ratio_max": 1.0,
+    "notes": "PX4 flow quality is 0-255; low quality means poor texture/lighting/range."
+  }
+}

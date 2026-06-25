@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import * as path from "node:path";
 
@@ -6,6 +7,33 @@ const PROJECT_ROOT = process.env.DRONE_AGENT_PROJECT_ROOT || path.resolve(proces
 const CONFIG_ROOT = path.join(PROJECT_ROOT, "config");
 const PROFILE_ROOT = path.join(CONFIG_ROOT, "hardware-profiles");
 const MANIFEST_FILE = path.join(PROFILE_ROOT, "manifest.json");
+const WINDOWS_CLI_EXE = path.join(PROJECT_ROOT, "drone-agent-cli.exe");
+const WINDOWS_PYTHON = path.join(PROJECT_ROOT, ".venv-win", "Scripts", "python.exe");
+const WSL_PYTHON = path.join(PROJECT_ROOT, ".venv", "bin", "python");
+
+function pickPython() {
+  if (existsSync(WINDOWS_CLI_EXE)) return WINDOWS_CLI_EXE;
+  if (existsSync(WINDOWS_PYTHON)) return WINDOWS_PYTHON;
+  if (process.platform !== "win32" && existsSync(WSL_PYTHON)) return WSL_PYTHON;
+  return "python";
+}
+
+/**
+ * Load the merged (flat) profile via the Python CLI so the layer-merge logic
+ * lives in one place. Falls back to reading the raw profile file if the CLI is
+ * unavailable (e.g. no interpreter) — the raw file is reference-style and will
+ * be missing vehicle/param fields, but the request still succeeds.
+ */
+function loadMergedProfile(id: string, fallbackFile: string): Record<string, unknown> {
+  const cmd = pickPython();
+  const args = cmd === WINDOWS_CLI_EXE ? ["--view-profile", id] : ["main.py", "--view-profile", id];
+  try {
+    const out = execFileSync(cmd, args, { cwd: PROJECT_ROOT, encoding: "utf-8", windowsHide: true });
+    return JSON.parse(out);
+  } catch {
+    return readJson(fallbackFile);
+  }
+}
 
 type ManifestProfile = {
   id: string;
@@ -74,7 +102,7 @@ export async function GET(request: NextRequest) {
       defaultProfile: manifest.default,
       selectedProfile: {
         ...profileSummary(selectedEntry, manifest.default),
-        data: readJson(selectedPath),
+        data: loadMergedProfile(selectedEntry.id, selectedPath),
       },
     },
     { headers: { "Cache-Control": "no-store" } },

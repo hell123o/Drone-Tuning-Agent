@@ -8,8 +8,15 @@ from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-PROFILE_DIR = PROJECT_ROOT / "config" / "hardware-profiles"
+CONFIG_DIR = PROJECT_ROOT / "config"
+PROFILE_DIR = CONFIG_DIR / "hardware-profiles"
+VEHICLE_DIR = CONFIG_DIR / "vehicles"
+PARAM_PROFILE_DIR = CONFIG_DIR / "param-profiles"
 MANIFEST_PATH = PROFILE_DIR / "manifest.json"
+
+# Keys that reference other layers; resolved at load time and not emitted in the
+# merged output (kept identical to the legacy flat profile shape).
+_REFERENCE_KEYS = ("vehicle", "param_profile")
 
 
 class HardwareProfileError(ValueError):
@@ -79,15 +86,61 @@ def resolve_profile(profile_id: str | None) -> dict[str, Any]:
     raise HardwareProfileError(f"Unknown hardware profile '{wanted}'. Available profiles: {available}")
 
 
-def load_profile(profile_id: str | None = None) -> dict[str, Any]:
-    profile = resolve_profile(profile_id)
-    path = Path(profile["path"])
+def _load_json(path: Path, kind: str) -> dict[str, Any]:
     if not path.exists():
-        raise HardwareProfileError(f"Hardware profile file does not exist: {path}")
+        raise HardwareProfileError(f"{kind} file does not exist: {path}")
     with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, dict):
-        raise HardwareProfileError(f"Hardware profile must be a JSON object: {path}")
+        raise HardwareProfileError(f"{kind} must be a JSON object: {path}")
+    return data
+
+
+def _load_vehicle(vehicle_id: str) -> dict[str, Any]:
+    return _load_json(VEHICLE_DIR / f"{vehicle_id}.json", "Vehicle")
+
+
+def _load_param_profile(param_profile_id: str) -> dict[str, Any]:
+    return _load_json(PARAM_PROFILE_DIR / f"{param_profile_id}.json", "Param profile")
+
+
+def _resolve_layered_profile(data: dict[str, Any]) -> dict[str, Any]:
+    """Merge a reference-style hardware profile into a flat dict.
+
+    Layering (later overrides earlier): vehicle base -> param-profile tuning
+    -> hardware-profile's own fields. The output key set matches the legacy
+    single-file profile shape, so downstream consumers are unchanged. Profiles
+    without reference keys are returned as-is (legacy / custom --hardware files).
+    """
+    if not any(key in data for key in _REFERENCE_KEYS):
+        return data
+
+    merged: dict[str, Any] = {}
+
+    vehicle_id = data.get("vehicle")
+    if vehicle_id:
+        merged.update(_load_vehicle(str(vehicle_id)))
+
+    param_profile_id = data.get("param_profile")
+    if param_profile_id:
+        param_profile = _load_param_profile(str(param_profile_id))
+        for key in ("stable_px4_profile", "safe_adjustment_limits"):
+            if key in param_profile:
+                merged[key] = param_profile[key]
+
+    for key, value in data.items():
+        if key in _REFERENCE_KEYS:
+            continue
+        merged[key] = value
+
+    return merged
+
+
+def load_profile(profile_id: str | None = None) -> dict[str, Any]:
+    profile = resolve_profile(profile_id)
+    path = Path(profile["path"])
+    data = _load_json(path, "Hardware profile")
+    data = _resolve_layered_profile(data)
     data.setdefault("profile_id", profile["id"])
     data.setdefault("profile_label", profile["label"])
     data.setdefault("profile_display_name", profile["report_label"])

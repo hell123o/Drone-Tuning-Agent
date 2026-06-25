@@ -1,0 +1,20 @@
+{
+  "schema_id": "rtk_gps",
+  "name": "RTK",
+  "type": "gnss",
+  "purpose": "high-precision outdoor positioning",
+  "log_topics": ["vehicle_gps_position", "sensor_gps"],
+  "params": {
+    "GPS_1_CONFIG": "primary GPS port config",
+    "GPS_UBX_DYNMODEL": "u-blox dynamic platform model",
+    "GPS_1_GNSS": "enabled GNSS systems",
+    "GPS_YAW_OFFSET": "moving-baseline yaw offset"
+  },
+  "health_reference": {
+    "fix_ratio_min": 0.5,
+    "satellites_min": 10,
+    "eph_max_m": 1.0,
+    "epv_max_m": 1.5,
+    "notes": "fix_type 5=RTK float, 6=RTK fixed. Position-mode drift improvement needs comparative flights."
+  }
+}

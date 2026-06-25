@@ -1,0 +1,16 @@
+{
+  "schema_id": "rplidar_s30",
+  "name": "S30",
+  "type": "payload",
+  "purpose": "mission payload / rangefinder affecting mass and center of gravity",
+  "log_topics": ["distance_sensor"],
+  "params": {
+    "MAV_x_CONFIG": "MAVLink instance bound to TELEM2 / Onboard",
+    "SER_TEL2_BAUD": "TELEM2 serial baud rate"
+  },
+  "health_reference": {
+    "signal_quality_min": 30,
+    "gap_ratio_max": 0.2,
+    "notes": "Front/back/left/right direction mapping must be verified on the ground; cannot be inferred from a single log."
+  }
+}

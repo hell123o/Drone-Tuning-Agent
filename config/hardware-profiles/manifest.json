@@ -5,7 +5,7 @@
       "id": "x760_base",
       "label": "X760 base",
       "report_label": "base",
-      "path": "../x760_hardware.json"
+      "path": "x760_base.json"
     },
     {
       "id": "x760_hflow",

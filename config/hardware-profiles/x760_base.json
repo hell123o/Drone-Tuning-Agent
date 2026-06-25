@@ -1,0 +1,10 @@
+{
+  "vehicle": "x760",
+  "param_profile": "x760_px4_stable",
+  "tuning_goal": "stable and predictable heavy-lift flight, not agile racing behavior",
+  "notes": [
+    "Large 17-inch props respond slowly; do not tune for racing-like agility.",
+    "If vibration is normal but attitude oscillates near 1 Hz, treat it as possible physical low-frequency sway or wind before aggressive PID changes.",
+    "Before changing PID, prioritize battery/current sensing, center of gravity, calibration, loose motor/ESC wiring, and prop balance checks."
+  ]
+}

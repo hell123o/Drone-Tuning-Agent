@@ -1,0 +1,27 @@
+{
+  "param_profile_id": "x760_px4_hflow_s30",
+  "label": "X760 PX4 H-Flow+S30 stable",
+  "stable_px4_profile": {
+    "MC_ROLL_P": 5.8,
+    "MC_PITCH_P": 5.8,
+    "MC_ROLLRATE_P": 0.115,
+    "MC_ROLLRATE_I": 0.12,
+    "MC_ROLLRATE_D": 0.01,
+    "MC_PITCHRATE_P": 0.115,
+    "MC_PITCHRATE_I": 0.12,
+    "MC_PITCHRATE_D": 0.01,
+    "MC_YAWRATE_P": 0.2,
+    "MC_YAWRATE_I": 0.08,
+    "MC_YAWRATE_D": 0.003,
+    "IMU_GYRO_CUTOFF": 30,
+    "IMU_DGYRO_CUTOFF": 25
+  },
+  "safe_adjustment_limits": {
+    "angle_p_step": 0.4,
+    "rate_p_step": 0.015,
+    "rate_i_step": 0.02,
+    "rate_d_step": 0.001,
+    "yaw_rate_p_step": 0.05,
+    "trim_max_rad": 0.05
+  }
+}

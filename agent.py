@@ -492,13 +492,15 @@ class DroneAgent:
 
     def _load_hardware(self, path=None, profile_id=None):
         """加载硬件配置。默认读取 config/x760_hardware.json。"""
-        from hardware_profiles import load_profile
+        from hardware_profiles import load_profile, _resolve_layered_profile
         if profile_id or not path:
             return load_profile(profile_id)
         if not path or not os.path.exists(path):
             return {}
         with open(path, "r", encoding="utf-8") as f:
             hardware = json.load(f)
+        # Honor reference-style custom files too; flat files pass through unchanged.
+        hardware = _resolve_layered_profile(hardware)
         hardware.setdefault("profile_id", os.path.splitext(os.path.basename(path))[0])
         hardware.setdefault("profile_label", hardware.get("name") or hardware["profile_id"])
         hardware.setdefault("profile_display_name", hardware.get("profile_label"))
