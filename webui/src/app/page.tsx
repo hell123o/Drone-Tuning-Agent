@@ -90,6 +90,10 @@ export default function Home() {
   const [testOperator, setTestOperator] = useState("");
   const [testAircraft, setTestAircraft] = useState("X760");
   const [takeoffWeightKg, setTakeoffWeightKg] = useState("");
+  const [battery, setBattery] = useState("");
+  const [payload, setPayload] = useState("");
+  const [centerOfGravityNote, setCenterOfGravityNote] = useState("");
+  const [wind, setWind] = useState("");
   const [logUpload, setLogUpload] = useState<File | null>(null);
   const [paramsUpload, setParamsUpload] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -234,6 +238,10 @@ export default function Home() {
       form.set("testOperator", testOperator);
       form.set("testAircraft", testAircraft);
       form.set("takeoffWeightKg", takeoffWeightKg);
+      form.set("battery", battery);
+      form.set("payload", payload);
+      form.set("centerOfGravityNote", centerOfGravityNote);
+      form.set("wind", wind);
       if (logUpload) form.set("logfileUpload", logUpload);
       if (paramsUpload) form.set("paramsUpload", paramsUpload);
 
@@ -331,10 +339,6 @@ export default function Home() {
                       <Input id="testAircraft" name="testAircraft" value={testAircraft} onChange={(event) => setTestAircraft(event.target.value)} placeholder="例如 X760" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="takeoffWeightKg">实测起飞重量</Label>
-                      <Input id="takeoffWeightKg" name="takeoffWeightKg" value={takeoffWeightKg} onChange={(event) => setTakeoffWeightKg(event.target.value)} placeholder="例如 4.2kg" />
-                    </div>
-                    <div className="space-y-1.5">
                       <Label htmlFor="testLocation">测试地点</Label>
                       <Input id="testLocation" name="testLocation" value={testLocation} onChange={(event) => setTestLocation(event.target.value)} placeholder="例如 观澜低空测试场" />
                     </div>
@@ -346,6 +350,35 @@ export default function Home() {
                   <div className="space-y-1.5">
                     <Label htmlFor="testProject">测试项目</Label>
                     <Input id="testProject" name="testProject" value={testProject} onChange={(event) => setTestProject(event.target.value)} placeholder="例如 X760 悬停稳定性测试" />
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-xl border bg-muted/20 p-4">
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground">本次飞行配置</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">每次飞行可变（电池/载荷/配重等），与硬件画像分开记录，实测值优先用于诊断。</p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="takeoffWeightKg">实测起飞重量</Label>
+                      <Input id="takeoffWeightKg" name="takeoffWeightKg" value={takeoffWeightKg} onChange={(event) => setTakeoffWeightKg(event.target.value)} placeholder="例如 4.2kg" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="battery">电池配置</Label>
+                      <Input id="battery" name="battery" value={battery} onChange={(event) => setBattery(event.target.value)} placeholder="例如 2x 5000mAh 6S" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="payload">载荷备注</Label>
+                      <Input id="payload" name="payload" value={payload} onChange={(event) => setPayload(event.target.value)} placeholder="无 / 相机 / 云台 / 测试支架" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="centerOfGravityNote">重心备注</Label>
+                      <Input id="centerOfGravityNote" name="centerOfGravityNote" value={centerOfGravityNote} onChange={(event) => setCenterOfGravityNote(event.target.value)} placeholder="偏前 / 偏后 / 未知" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="wind">风</Label>
+                      <Input id="wind" name="wind" value={wind} onChange={(event) => setWind(event.target.value)} placeholder="例如 3-4 m/s 侧风 / 未知" />
+                    </div>
                   </div>
                 </div>
 

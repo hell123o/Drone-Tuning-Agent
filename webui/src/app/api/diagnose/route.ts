@@ -24,7 +24,7 @@ type DiagnoseInput = {
   metadata?: Record<string, string>;
 };
 
-const METADATA_FIELDS = ["testTime", "testLocation", "testProject", "testOperator", "testAircraft", "takeoffWeightKg"] as const;
+const METADATA_FIELDS = ["testTime", "testLocation", "testProject", "testOperator", "testAircraft", "takeoffWeightKg", "battery", "payload", "centerOfGravityNote", "wind"] as const;
 
 function readMetadataFromForm(form: FormData) {
   const metadata: Record<string, string> = {};

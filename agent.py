@@ -243,6 +243,10 @@ class DroneAgent:
             ("testOperator", "测试人员"),
             ("testAircraft", "测试机型"),
             ("takeoffWeightKg", "实测起飞重量"),
+            ("battery", "电池配置"),
+            ("payload", "载荷备注"),
+            ("centerOfGravityNote", "重心备注"),
+            ("wind", "风"),
         ]
         rows = []
         for key, label in labels:
@@ -311,6 +315,7 @@ class DroneAgent:
                 "aircraft": aircraft,
                 "hardware_profile": profile_label,
                 "takeoff_weight": takeoff_weight,
+                **self._flight_config_from_metadata(metadata),
                 "parameter_file": params_name,
                 "flight_log": log_name,
                 "flight_log_path": os.path.abspath(logfile),
@@ -334,9 +339,33 @@ class DroneAgent:
             f"- 机体：{config.get('aircraft') or '未知'}",
             f"- 硬件画像：{config.get('hardware_profile') or '未知'}",
             f"- 实测起飞重量：{config.get('takeoff_weight') or '未填写'}",
+            f"- 电池配置：{config.get('battery') or '未填写'}",
+            f"- 载荷备注：{config.get('payload') or '未填写'}",
+            f"- 重心备注：{config.get('center_of_gravity_note') or '未知'}",
+            f"- 风：{config.get('wind') or '未知'}",
             f"- 参数文件：{config.get('parameter_file') or '未提供'}",
             f"- 飞行日志：{config.get('flight_log') or '未知'}",
         ])
+
+    def _flight_config_from_metadata(self, metadata):
+        """从测试 metadata 抽取本次飞行配置（每次飞行可变，区别于硬件画像）。
+
+        重量/电池/载荷/重心/风属于单次飞行，硬件 profile 里的同名字段仅作参考默认值。
+        缺省值用 None，便于上层显示“未填写/未知”。
+        """
+        metadata = metadata or {}
+
+        def clean(value):
+            text = str(value).strip() if value is not None else ""
+            return text or None
+
+        return {
+            "takeoff_weight_kg": clean(metadata.get("takeoffWeightKg")),
+            "battery": clean(metadata.get("battery")),
+            "payload": clean(metadata.get("payload")),
+            "center_of_gravity_note": clean(metadata.get("centerOfGravityNote")),
+            "wind": clean(metadata.get("wind")),
+        }
 
     def _write_snapshot(self, run_context, output_dir):
         snapshot_path = os.path.join(output_dir, "snapshot.json")
