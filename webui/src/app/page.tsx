@@ -6,8 +6,10 @@ import remarkGfm from "remark-gfm";
 import {
   Activity,
   Bot,
+  Copy,
   Download,
   FileChartColumn,
+  FileJson,
   FileSliders,
   Loader2,
   Plane,
@@ -110,6 +112,10 @@ export default function Home() {
   const [hardwareProfile, setHardwareProfile] = useState("x760_base");
   const [selectedProfileData, setSelectedProfileData] = useState<Record<string, unknown> | null>(null);
   const [profileError, setProfileError] = useState("");
+  const [useCustomHardware, setUseCustomHardware] = useState(false);
+  const [customHardwareJson, setCustomHardwareJson] = useState("");
+  const [customHardwareError, setCustomHardwareError] = useState("");
+  const [customHardwareFileName, setCustomHardwareFileName] = useState("");
 
   const statusLabel = useMemo(() => {
     if (loading) return "诊断运行中";
@@ -126,6 +132,58 @@ export default function Home() {
     () => (selectedProfileData ? JSON.stringify(selectedProfileData, null, 2) : ""),
     [selectedProfileData],
   );
+
+  function copySelectedProfileToCustomEditor() {
+    if (!selectedProfileJson) {
+      setCustomHardwareError("当前硬件画像还没有加载完成");
+      return;
+    }
+    setUseCustomHardware(true);
+    setCustomHardwareJson(selectedProfileJson);
+    setCustomHardwareFileName("");
+    setCustomHardwareError("");
+  }
+
+  async function loadCustomHardwareFile(file: File | null) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("JSON 必须是一个对象");
+      }
+      setUseCustomHardware(true);
+      setCustomHardwareJson(JSON.stringify(parsed, null, 2));
+      setCustomHardwareFileName(file.name);
+      setCustomHardwareError("");
+    } catch (customProfileError) {
+      setCustomHardwareError(customProfileError instanceof Error ? customProfileError.message : String(customProfileError));
+    }
+  }
+
+  function validateCustomHardwareJson() {
+    if (!useCustomHardware) return true;
+    const text = customHardwareJson.trim();
+    if (!text) {
+      const message = "请填写自定义硬件画像 JSON，或关闭自定义画像。";
+      setCustomHardwareError(message);
+      setError(message);
+      return false;
+    }
+    try {
+      const parsed = JSON.parse(text);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("JSON 必须是一个对象");
+      }
+    } catch (customProfileError) {
+      const message = customProfileError instanceof Error ? customProfileError.message : String(customProfileError);
+      setCustomHardwareError(message);
+      setError(`自定义硬件画像 JSON 格式错误：${message}`);
+      return false;
+    }
+    setCustomHardwareError("");
+    return true;
+  }
 
   useEffect(() => {
     let ignore = false;
@@ -218,6 +276,8 @@ export default function Home() {
       return;
     }
 
+    if (!validateCustomHardwareJson()) return;
+
     setLoading(true);
     setClientStatus("正在上传文件并启动诊断...");
     setProgress(5);
@@ -236,7 +296,8 @@ export default function Home() {
       form.set("apiBase", apiBase);
       form.set("apiKey", apiKey);
       form.set("model", model);
-      form.set("hardwareProfile", hardwareProfile);
+      form.set("hardwareProfile", useCustomHardware ? "" : hardwareProfile);
+      form.set("customHardwareJson", useCustomHardware ? customHardwareJson : "");
       form.set("testTime", testTime);
       form.set("testLocation", testLocation);
       form.set("testProject", testProject);
@@ -402,6 +463,7 @@ export default function Home() {
                       name="hardwareProfile"
                       value={hardwareProfile}
                       onChange={(event) => setHardwareProfile(event.target.value)}
+                      disabled={useCustomHardware}
                       className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {hardwareProfiles.map((profile) => (
@@ -410,6 +472,61 @@ export default function Home() {
                         </option>
                       ))}
                     </select>
+                  </div>
+                  <div className="space-y-3 rounded-lg border bg-background/50 p-3">
+                    <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={useCustomHardware}
+                        onChange={(event) => setUseCustomHardware(event.target.checked)}
+                        className="size-4"
+                      />
+                      使用自定义硬件画像 JSON
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        onClick={copySelectedProfileToCustomEditor}
+                      >
+                        <Copy className="size-4" /> 基于当前画像修改
+                      </Button>
+                      <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground">
+                        <FileJson className="size-4" />
+                        导入 JSON
+                        <input
+                          type="file"
+                          accept=".json,application/json"
+                          className="hidden"
+                          onChange={(event) => void loadCustomHardwareFile(event.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                      {customHardwareFileName && (
+                        <Badge variant="outline" className="font-mono">
+                          {customHardwareFileName}
+                        </Badge>
+                      )}
+                    </div>
+                    {useCustomHardware && (
+                      <div className="space-y-2">
+                        <Label htmlFor="customHardwareJson">自定义硬件画像 JSON</Label>
+                        <Textarea
+                          id="customHardwareJson"
+                          name="customHardwareJson"
+                          value={customHardwareJson}
+                          onChange={(event) => {
+                            setCustomHardwareJson(event.target.value);
+                            setCustomHardwareError("");
+                          }}
+                          rows={12}
+                          className="font-mono text-xs"
+                          placeholder="点击“基于当前画像修改”自动填入，或导入一个 .json 文件。"
+                        />
+                      </div>
+                    )}
+                    {customHardwareError && <p className="text-xs text-destructive">{customHardwareError}</p>}
                   </div>
                   {profileError ? (
                     <p className="text-xs text-destructive">{profileError}</p>

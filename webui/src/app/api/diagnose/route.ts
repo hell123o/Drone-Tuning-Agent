@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
+import { appendHardwareArgs, prepareHardwareSelection } from "@/lib/diagnose-hardware.mjs";
 
 const PROJECT_ROOT = process.env.DRONE_AGENT_PROJECT_ROOT || path.resolve(process.cwd(), "..");
 const RUNS_ROOT = path.join(PROJECT_ROOT, "webui_runs");
@@ -16,6 +17,7 @@ type DiagnoseInput = {
   question?: string;
   hardwareFile?: string;
   hardwareProfile?: string;
+  customHardwareJson?: string;
   apiBase?: string;
   apiKey?: string;
   model?: string;
@@ -87,6 +89,7 @@ async function parseInput(request: NextRequest): Promise<DiagnoseInput> {
       question: String(form.get("question") || ""),
       hardwareFile: String(form.get("hardwareFile") || ""),
       hardwareProfile: String(form.get("hardwareProfile") || ""),
+      customHardwareJson: String(form.get("customHardwareJson") || ""),
       apiBase: String(form.get("apiBase") || ""),
       apiKey: String(form.get("apiKey") || ""),
       model: String(form.get("model") || ""),
@@ -257,6 +260,28 @@ export async function POST(request: NextRequest) {
     writeFileSync(paramsFile, Buffer.from(await body.uploadedParams.arrayBuffer()));
   }
 
+  let hardwareSelection;
+  try {
+    hardwareSelection = prepareHardwareSelection({
+      outputDir,
+      hardwareFile,
+      hardwareProfile,
+      customHardwareJson: body.customHardwareJson,
+    });
+  } catch (hardwareError) {
+    writeStatus(outputDir, {
+      runId,
+      state: "error",
+      step: "自定义硬件画像读取失败",
+      progress: 100,
+      error: hardwareError instanceof Error ? hardwareError.message : String(hardwareError),
+    });
+    return NextResponse.json(
+      { error: hardwareError instanceof Error ? hardwareError.message : String(hardwareError) },
+      { status: 400 },
+    );
+  }
+
   let metadataFile = "";
   if (body.metadata && Object.values(body.metadata).some((value) => value?.trim())) {
     metadataFile = path.join(outputDir, "test_metadata.json");
@@ -267,8 +292,7 @@ export async function POST(request: NextRequest) {
   const args = command === WINDOWS_CLI_EXE ? [logfile, "--output", outputDir] : ["main.py", logfile, "--output", outputDir];
   if (paramsFile) args.push("-p", paramsFile);
   if (body.question?.trim()) args.push("-q", body.question.trim());
-  if (hardwareProfile) args.push("--profile", hardwareProfile);
-  if (hardwareFile) args.push("--hardware", hardwareFile);
+  appendHardwareArgs(args, hardwareSelection);
   if (body.apiBase?.trim()) args.push("--api-base", body.apiBase.trim());
   if (body.model?.trim()) args.push("--model", body.model.trim());
   if (metadataFile) args.push("--metadata", metadataFile);
