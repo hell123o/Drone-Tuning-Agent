@@ -22,3 +22,10 @@ webui/.eslintcache
 
 # Logs
 *.log
+
+# Packaging outputs
+build/
+dist/
+dist-desktop/
+desktop/node_modules/
+desktop/dist/
