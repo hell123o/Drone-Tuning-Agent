@@ -9,6 +9,7 @@ $WebStandalone = Join-Path $Root "webui\.next\standalone"
 $WebStatic = Join-Path $Root "webui\.next\static"
 $DesktopNodeModules = Join-Path $Root "desktop\node_modules"
 $OutputDir = Join-Path $Root "dist-desktop"
+$PackageStartedAt = Get-Date
 
 function Invoke-Step {
     param(
@@ -21,6 +22,20 @@ function Invoke-Step {
     Write-Host ""
     Write-Host "==> $Name" -ForegroundColor Cyan
     & $Command
+}
+
+function Invoke-Native {
+    param(
+        [Parameter(Mandatory = $true)]
+        [scriptblock] $Command,
+        [Parameter(Mandatory = $true)]
+        [string] $Message
+    )
+
+    & $Command
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Message failed with exit code $LASTEXITCODE."
+    }
 }
 
 function Assert-Path {
@@ -40,23 +55,23 @@ Push-Location $Root
 try {
     Invoke-Step "Preparing isolated Python build environment" {
         if (-not (Test-Path $VenvPython)) {
-            python -m venv (Join-Path $Root ".venv-win")
+            Invoke-Native { python -m venv (Join-Path $Root ".venv-win") } "python -m venv"
         }
         Assert-Path $VenvPython "Python virtual environment was not created."
-        & $VenvPython -m pip install --upgrade pip
-        & $VenvPython -m pip install -e .
-        & $VenvPython -m pip install pyinstaller
+        Invoke-Native { & $VenvPython -m pip install --upgrade pip } "pip install --upgrade pip"
+        Invoke-Native { & $VenvPython -m pip install -e . } "pip install -e ."
+        Invoke-Native { & $VenvPython -m pip install pyinstaller } "pip install pyinstaller"
     }
 
     Invoke-Step "Building Python CLI" {
-        & $VenvPython -m PyInstaller --clean --noconfirm drone-agent-cli.spec
+        Invoke-Native { & $VenvPython -m PyInstaller --clean --noconfirm drone-agent-cli.spec } "PyInstaller"
         Assert-Path $DistCli "PyInstaller did not produce the diagnostic CLI."
     }
 
     Invoke-Step "Installing Web UI dependencies" {
         Push-Location (Join-Path $Root "webui")
         try {
-            npm install
+            Invoke-Native { npm install } "npm install (webui)"
         } finally {
             Pop-Location
         }
@@ -65,7 +80,7 @@ try {
     Invoke-Step "Building Web UI standalone output" {
         Push-Location (Join-Path $Root "webui")
         try {
-            npm run build
+            Invoke-Native { npm run build } "npm run build (webui)"
         } finally {
             Pop-Location
         }
@@ -76,7 +91,7 @@ try {
     Invoke-Step "Installing Electron dependencies" {
         Push-Location (Join-Path $Root "desktop")
         try {
-            npm install
+            Invoke-Native { npm install } "npm install (desktop)"
         } finally {
             Pop-Location
         }
@@ -84,9 +99,12 @@ try {
     }
 
     Invoke-Step "Building Electron installer and portable app" {
+        if (Test-Path $OutputDir) {
+            Get-ChildItem $OutputDir -Filter "*.exe" -File | Remove-Item -Force
+        }
         Push-Location (Join-Path $Root "desktop")
         try {
-            npm run dist
+            Invoke-Native { npm run dist } "npm run dist (desktop)"
         } finally {
             Pop-Location
         }
@@ -101,6 +119,12 @@ try {
         }
         if (-not $portable) {
             throw "Portable.exe artifact was not found under $OutputDir."
+        }
+        if ($setup.LastWriteTime -lt $PackageStartedAt) {
+            throw "Setup.exe artifact is stale: $($setup.FullName)"
+        }
+        if ($portable.LastWriteTime -lt $PackageStartedAt) {
+            throw "Portable.exe artifact is stale: $($portable.FullName)"
         }
         Write-Host "Installer: $($setup.FullName)"
         Write-Host "Portable:  $($portable.FullName)"
