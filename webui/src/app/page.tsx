@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -14,7 +14,9 @@ import {
   Loader2,
   Plane,
   Radar,
+  Save,
   Sparkles,
+  Trash2,
   Upload,
 } from "lucide-react";
 
@@ -69,6 +71,7 @@ type HardwareProfileSummary = {
   label: string;
   path: string;
   default?: boolean;
+  user?: boolean;
   exists?: boolean;
 };
 
@@ -116,6 +119,9 @@ export default function Home() {
   const [customHardwareJson, setCustomHardwareJson] = useState("");
   const [customHardwareError, setCustomHardwareError] = useState("");
   const [customHardwareFileName, setCustomHardwareFileName] = useState("");
+  const [savedProfileLabel, setSavedProfileLabel] = useState("");
+  const [savedProfileId, setSavedProfileId] = useState("");
+  const [profileActionBusy, setProfileActionBusy] = useState(false);
 
   const statusLabel = useMemo(() => {
     if (loading) return "诊断运行中";
@@ -133,6 +139,38 @@ export default function Home() {
     [selectedProfileData],
   );
 
+  const refreshHardwareProfiles = useCallback(async (requestedProfile = hardwareProfile) => {
+    setProfileError("");
+    const response = await fetch(`/api/hardware-profiles?id=${encodeURIComponent(requestedProfile)}`, { cache: "no-store" });
+    const data = (await response.json()) as HardwareProfileResponse & { error?: string };
+    if (!response.ok) throw new Error(data.error || "无法读取硬件画像");
+    setHardwareProfiles(data.profiles ?? []);
+    if (data.selectedProfile) {
+      setSelectedProfileData(data.selectedProfile.data);
+      setHardwareProfile(data.selectedProfile.id);
+      return data.selectedProfile.id;
+    }
+    if (data.defaultProfile) {
+      setHardwareProfile(data.defaultProfile);
+      return data.defaultProfile;
+    }
+    return requestedProfile;
+  }, [hardwareProfile]);
+
+  function slugifyProfileId(label: string) {
+    return label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 64);
+  }
+
+  function handleProfileLabelChange(value: string) {
+    setSavedProfileLabel(value);
+    setSavedProfileId((current) => current || slugifyProfileId(value));
+  }
+
   function copySelectedProfileToCustomEditor() {
     if (!selectedProfileJson) {
       setCustomHardwareError("当前硬件画像还没有加载完成");
@@ -142,6 +180,8 @@ export default function Home() {
     setCustomHardwareJson(selectedProfileJson);
     setCustomHardwareFileName("");
     setCustomHardwareError("");
+    setSavedProfileLabel(`${selectedProfile?.label ?? hardwareProfile} custom`);
+    setSavedProfileId(`${hardwareProfile}_custom`);
   }
 
   async function loadCustomHardwareFile(file: File | null) {
@@ -185,16 +225,72 @@ export default function Home() {
     return true;
   }
 
+  async function saveCustomHardwareProfile() {
+    if (!validateCustomHardwareJson()) return;
+    if (!savedProfileLabel.trim()) {
+      setCustomHardwareError("请填写要保存到下拉框的画像名称");
+      return;
+    }
+    if (!savedProfileId.trim()) {
+      setCustomHardwareError("请填写画像 ID");
+      return;
+    }
+
+    setProfileActionBusy(true);
+    try {
+      const response = await fetch("/api/hardware-profiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: savedProfileId.trim(),
+          label: savedProfileLabel.trim(),
+          profileJson: customHardwareJson,
+        }),
+      });
+      const data = (await response.json()) as { error?: string; profile?: HardwareProfileSummary };
+      if (!response.ok) throw new Error(data.error || "保存硬件画像失败");
+      const nextId = data.profile?.id || savedProfileId.trim();
+      await refreshHardwareProfiles(nextId);
+      setUseCustomHardware(false);
+      setCustomHardwareError("");
+    } catch (profileSaveError) {
+      setCustomHardwareError(profileSaveError instanceof Error ? profileSaveError.message : String(profileSaveError));
+    } finally {
+      setProfileActionBusy(false);
+    }
+  }
+
+  async function deleteSelectedHardwareProfile() {
+    if (!selectedProfile?.user) return;
+    const confirmed = window.confirm(`删除硬件画像 "${selectedProfile.label}"？`);
+    if (!confirmed) return;
+
+    setProfileActionBusy(true);
+    try {
+      const response = await fetch(`/api/hardware-profiles?id=${encodeURIComponent(selectedProfile.id)}`, {
+        method: "DELETE",
+      });
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(data.error || "删除硬件画像失败");
+      await refreshHardwareProfiles("x760_base");
+      setCustomHardwareError("");
+    } catch (profileDeleteError) {
+      setProfileError(profileDeleteError instanceof Error ? profileDeleteError.message : String(profileDeleteError));
+    } finally {
+      setProfileActionBusy(false);
+    }
+  }
+
   useEffect(() => {
     let ignore = false;
 
     async function loadProfiles() {
       try {
-        setProfileError("");
         const response = await fetch(`/api/hardware-profiles?id=${encodeURIComponent(hardwareProfile)}`, { cache: "no-store" });
         const data = (await response.json()) as HardwareProfileResponse & { error?: string };
         if (!response.ok) throw new Error(data.error || "无法读取硬件画像");
         if (ignore) return;
+        setProfileError("");
         setHardwareProfiles(data.profiles ?? []);
         if (data.selectedProfile) {
           setSelectedProfileData(data.selectedProfile.data);
@@ -454,7 +550,22 @@ export default function Home() {
                       <h3 className="text-sm font-medium text-foreground">硬件画像</h3>
                       <p className="mt-1 text-xs text-muted-foreground">选择本次诊断使用的 X760 硬件配置。</p>
                     </div>
-                    {selectedProfile?.default && <Badge variant="secondary">默认</Badge>}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {selectedProfile?.default && <Badge variant="secondary">默认</Badge>}
+                      {selectedProfile?.user && <Badge variant="outline">用户画像</Badge>}
+                      {selectedProfile?.user && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-2 text-destructive"
+                          disabled={profileActionBusy}
+                          onClick={() => void deleteSelectedHardwareProfile()}
+                        >
+                          <Trash2 className="size-4" /> 删除
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="hardwareProfile">选择硬件画像</Label>
@@ -524,6 +635,35 @@ export default function Home() {
                           className="font-mono text-xs"
                           placeholder="点击“基于当前画像修改”自动填入，或导入一个 .json 文件。"
                         />
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label htmlFor="savedProfileLabel">保存名称</Label>
+                            <Input
+                              id="savedProfileLabel"
+                              value={savedProfileLabel}
+                              onChange={(event) => handleProfileLabelChange(event.target.value)}
+                              placeholder="例如 X760 摄影载荷"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="savedProfileId">画像 ID</Label>
+                            <Input
+                              id="savedProfileId"
+                              value={savedProfileId}
+                              onChange={(event) => setSavedProfileId(event.target.value)}
+                              placeholder="例如 x760_camera_payload"
+                            />
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="gap-2"
+                          disabled={profileActionBusy}
+                          onClick={() => void saveCustomHardwareProfile()}
+                        >
+                          <Save className="size-4" /> 保存到下拉框
+                        </Button>
                       </div>
                     )}
                     {customHardwareError && <p className="text-xs text-destructive">{customHardwareError}</p>}

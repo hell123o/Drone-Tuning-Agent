@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import * as path from "node:path";
+import { deleteUserHardwareProfile, saveUserHardwareProfile } from "@/lib/hardware-profile-registry.mjs";
 
 const PROJECT_ROOT = process.env.DRONE_AGENT_PROJECT_ROOT || path.resolve(process.cwd(), "..");
 const CONFIG_ROOT = path.join(PROJECT_ROOT, "config");
@@ -40,6 +41,7 @@ type ManifestProfile = {
   label: string;
   report_label?: string;
   path: string;
+  user?: boolean;
 };
 
 type Manifest = {
@@ -67,6 +69,7 @@ function profileSummary(entry: ManifestProfile, defaultId?: string) {
     reportLabel: entry.report_label ?? entry.label,
     path: path.relative(PROJECT_ROOT, filePath),
     default: entry.id === defaultId,
+    user: entry.user === true,
     exists: existsSync(filePath),
   };
 }
@@ -107,4 +110,42 @@ export async function GET(request: NextRequest) {
     },
     { headers: { "Cache-Control": "no-store" } },
   );
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = (await request.json()) as {
+      id?: string;
+      label?: string;
+      profileJson?: string;
+    };
+    const profile = saveUserHardwareProfile({
+      projectRoot: PROJECT_ROOT,
+      id: body.id,
+      label: body.label,
+      profileJson: body.profileJson,
+    });
+    return NextResponse.json(
+      { profile },
+      { status: 201, headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      { status: 400 },
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const id = request.nextUrl.searchParams.get("id");
+    const result = deleteUserHardwareProfile({ projectRoot: PROJECT_ROOT, id });
+    return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      { status: 400 },
+    );
+  }
 }
