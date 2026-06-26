@@ -9,6 +9,8 @@ $WebStandalone = Join-Path $Root "webui\.next\standalone"
 $WebStatic = Join-Path $Root "webui\.next\static"
 $DesktopNodeModules = Join-Path $Root "desktop\node_modules"
 $OutputDir = Join-Path $Root "dist-desktop"
+$WinUnpackedDir = Join-Path $OutputDir "win-unpacked"
+$WinResourcesDir = Join-Path $WinUnpackedDir "resources"
 $PackageStartedAt = Get-Date
 
 function Invoke-Step {
@@ -48,6 +50,50 @@ function Assert-Path {
 
     if (-not (Test-Path $Path)) {
         throw "$Message`nMissing path: $Path"
+    }
+}
+
+function Update-WinUnpackedResources {
+    Assert-Path $WinUnpackedDir "Existing win-unpacked directory is required for the offline packaging fallback."
+
+    $copies = @(
+        @{
+            From = Join-Path $Root "desktop\main.js"
+            To = Join-Path $WinResourcesDir "app\main.js"
+        },
+        @{
+            From = Join-Path $Root "desktop\package.json"
+            To = Join-Path $WinResourcesDir "app\package.json"
+        },
+        @{
+            From = $WebStandalone
+            To = Join-Path $WinResourcesDir "webui-standalone"
+        },
+        @{
+            From = $WebStatic
+            To = Join-Path $WinResourcesDir "webui-standalone\.next\static"
+        },
+        @{
+            From = Join-Path $Root "webui\public"
+            To = Join-Path $WinResourcesDir "webui-standalone\public"
+        },
+        @{
+            From = $DistCli
+            To = Join-Path $WinResourcesDir "app-core\drone-agent-cli.exe"
+        },
+        @{
+            From = Join-Path $Root "config"
+            To = Join-Path $WinResourcesDir "app-core\config"
+        }
+    )
+
+    foreach ($item in $copies) {
+        Assert-Path $item.From "Prepackaged input is missing."
+        if (Test-Path $item.To) {
+            Remove-Item $item.To -Recurse -Force
+        }
+        New-Item -ItemType Directory -Force -Path (Split-Path $item.To -Parent) | Out-Null
+        Copy-Item $item.From $item.To -Recurse -Force
     }
 }
 
@@ -104,7 +150,12 @@ try {
         }
         Push-Location (Join-Path $Root "desktop")
         try {
-            Invoke-Native { npm run dist } "npm run dist (desktop)"
+            npm run dist
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "npm run dist failed with exit code $LASTEXITCODE; retrying from existing win-unpacked output." -ForegroundColor Yellow
+                Update-WinUnpackedResources
+                Invoke-Native { npx electron-builder --win nsis portable --prepackaged $WinUnpackedDir } "electron-builder --prepackaged"
+            }
         } finally {
             Pop-Location
         }
