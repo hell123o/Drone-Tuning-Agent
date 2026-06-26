@@ -26,6 +26,7 @@
     },
     "files": [
       "main.js",
+      "runtime-core.js",
       "package.json"
     ],
     "extraResources": [

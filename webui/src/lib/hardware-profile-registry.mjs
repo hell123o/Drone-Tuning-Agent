@@ -1,5 +1,4 @@
 import {
-  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -32,11 +31,21 @@ function writeJson(file, data) {
 }
 
 function readManifest(projectRoot) {
-  const manifest = readJson(manifestPath(projectRoot));
+  return readManifestFile(manifestPath(projectRoot), configRoot(projectRoot));
+}
+
+function readManifestFile(file, root) {
+  const manifest = readJson(file);
   if (!Array.isArray(manifest.profiles)) {
     throw new Error("Hardware profile manifest is invalid");
   }
-  return manifest;
+  return {
+    ...manifest,
+    profiles: manifest.profiles.map((entry) => ({
+      ...entry,
+      configRoot: root,
+    })),
+  };
 }
 
 function safeReadManifest(projectRoot) {
@@ -90,11 +99,6 @@ function resolveManifestProfilePath(projectRoot, relativePath) {
   return resolved;
 }
 
-function copyBundledConfig({ projectRoot, bundledConfigRoot }) {
-  mkdirSync(configRoot(projectRoot), { recursive: true });
-  cpSync(bundledConfigRoot, configRoot(projectRoot), { recursive: true, force: true });
-}
-
 export function ensureHardwareProfileConfig({ projectRoot, bundledConfigRoot }) {
   if (!bundledConfigRoot) return false;
 
@@ -108,7 +112,7 @@ export function ensureHardwareProfileConfig({ projectRoot, bundledConfigRoot }) 
 
   const runtimeManifest = safeReadManifest(projectRoot);
   const userProfiles = (runtimeManifest?.profiles || []).filter((entry) => entry.user === true);
-  copyBundledConfig({ projectRoot, bundledConfigRoot });
+  mkdirSync(profileRoot(projectRoot), { recursive: true });
 
   writeJson(manifestPath(projectRoot), {
     ...bundledManifest,
@@ -120,8 +124,49 @@ export function ensureHardwareProfileConfig({ projectRoot, bundledConfigRoot }) 
   return true;
 }
 
+export function readHardwareProfileCatalog({ projectRoot, bundledConfigRoot }) {
+  const runtimeManifest = safeReadManifest(projectRoot);
+  const bundledManifestFile = bundledConfigRoot
+    ? path.join(bundledConfigRoot, "hardware-profiles", "manifest.json")
+    : "";
+  const bundledManifest = bundledManifestFile && existsSync(bundledManifestFile)
+    ? readManifestFile(bundledManifestFile, bundledConfigRoot)
+    : null;
+
+  if (!runtimeManifest && !bundledManifest) {
+    throw new Error("Hardware profile manifest not found");
+  }
+
+  const baseManifest = bundledManifest || runtimeManifest;
+  const userProfiles = (runtimeManifest?.profiles || []).filter((entry) => entry.user === true);
+  const builtInProfiles = (baseManifest?.profiles || []).filter((entry) => entry.user !== true);
+
+  return {
+    ...baseManifest,
+    profiles: [
+      ...builtInProfiles,
+      ...userProfiles,
+    ],
+  };
+}
+
+function manifestEntryForWrite(entry) {
+  const rest = { ...entry };
+  delete rest.configRoot;
+  return rest;
+}
+
+function writeRuntimeManifest(projectRoot, catalog) {
+  mkdirSync(profileRoot(projectRoot), { recursive: true });
+  writeJson(manifestPath(projectRoot), {
+    default: catalog.default,
+    profiles: catalog.profiles.map(manifestEntryForWrite),
+  });
+}
+
 export function saveUserHardwareProfile({
   projectRoot,
+  bundledConfigRoot,
   id,
   label,
   profileJson,
@@ -129,7 +174,7 @@ export function saveUserHardwareProfile({
   const profileId = validateProfileId(id);
   const profileLabel = validateLabel(label);
   const profileData = parseProfileJson(profileJson);
-  const manifest = readManifest(projectRoot);
+  const manifest = readHardwareProfileCatalog({ projectRoot, bundledConfigRoot });
   const existing = manifest.profiles.find((entry) => entry.id === profileId);
 
   if (existing && !existing.user) {
@@ -138,6 +183,7 @@ export function saveUserHardwareProfile({
 
   const relativePath = userProfileFileName(profileId);
   const absolutePath = resolveManifestProfilePath(projectRoot, relativePath);
+  mkdirSync(profileRoot(projectRoot), { recursive: true });
   writeJson(absolutePath, profileData);
 
   const nextEntry = {
@@ -152,14 +198,14 @@ export function saveUserHardwareProfile({
     ...manifest.profiles.filter((entry) => entry.id !== profileId),
     nextEntry,
   ];
-  writeJson(manifestPath(projectRoot), manifest);
+  writeRuntimeManifest(projectRoot, manifest);
 
   return nextEntry;
 }
 
-export function deleteUserHardwareProfile({ projectRoot, id }) {
+export function deleteUserHardwareProfile({ projectRoot, bundledConfigRoot, id }) {
   const profileId = validateProfileId(id);
-  const manifest = readManifest(projectRoot);
+  const manifest = readHardwareProfileCatalog({ projectRoot, bundledConfigRoot });
   const entry = manifest.profiles.find((profile) => profile.id === profileId);
   if (!entry) {
     throw new Error(`Unknown hardware profile: ${profileId}`);
@@ -170,7 +216,7 @@ export function deleteUserHardwareProfile({ projectRoot, id }) {
 
   const absolutePath = resolveManifestProfilePath(projectRoot, entry.path);
   manifest.profiles = manifest.profiles.filter((profile) => profile.id !== profileId);
-  writeJson(manifestPath(projectRoot), manifest);
+  writeRuntimeManifest(projectRoot, manifest);
   if (existsSync(absolutePath)) {
     rmSync(absolutePath, { force: true });
   }

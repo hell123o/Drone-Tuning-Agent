@@ -3,6 +3,7 @@ const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
+const { ensurePackagedCore: ensureRuntimeCore } = require('./runtime-core');
 
 let serverProcess = null;
 let mainWindow = null;
@@ -42,26 +43,8 @@ function ensurePackagedCore() {
   if (!isPackaged()) return;
   const projectRoot = getProjectRoot();
   const bundledCore = path.join(process.resourcesPath, 'app-core');
-  const targetCli = path.join(projectRoot, 'drone-agent-cli.exe');
-  const targetConfig = path.join(projectRoot, 'config');
-  const targetRuns = path.join(projectRoot, 'webui_runs');
-  fs.mkdirSync(targetRuns, { recursive: true });
-
-  const sourceCli = path.join(bundledCore, 'drone-agent-cli.exe');
-  if (fs.existsSync(sourceCli)) {
-    try {
-      fs.copyFileSync(sourceCli, targetCli);
-    } catch (error) {
-      throw new Error(`无法复制内置诊断程序到运行目录：${targetCli}\n${error.message}`);
-    }
-  }
-  const sourceConfig = path.join(bundledCore, 'config');
-  if (fs.existsSync(sourceConfig) && !fs.existsSync(path.join(targetConfig, 'hardware-profiles', 'manifest.json'))) {
-    fs.mkdirSync(path.dirname(targetConfig), { recursive: true });
-    fs.cpSync(sourceConfig, targetConfig, { recursive: true, force: true });
-  }
+  ensureRuntimeCore({ projectRoot, bundledCore, fsImpl: fs });
 }
-
 function waitForPort(port, timeoutMs = 30000) {
   const start = Date.now();
   return new Promise((resolve, reject) => {

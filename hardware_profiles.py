@@ -9,7 +9,11 @@ from typing import Any
 
 
 PROJECT_ROOT = Path(os.environ.get("DRONE_AGENT_PROJECT_ROOT") or Path(__file__).resolve().parent)
+_BUNDLED_CONFIG_DIR = os.environ.get("DRONE_AGENT_BUNDLED_CONFIG_ROOT")
 CONFIG_DIR = PROJECT_ROOT / "config"
+if not (CONFIG_DIR / "hardware-profiles" / "manifest.json").exists() and _BUNDLED_CONFIG_DIR:
+    CONFIG_DIR = Path(_BUNDLED_CONFIG_DIR)
+CONFIG_ROOT = CONFIG_DIR.parent
 PROFILE_DIR = CONFIG_DIR / "hardware-profiles"
 VEHICLE_DIR = CONFIG_DIR / "vehicles"
 PARAM_PROFILE_DIR = CONFIG_DIR / "param-profiles"
@@ -50,7 +54,7 @@ def list_profiles() -> list[dict[str, Any]]:
                 "id": entry["id"],
                 "label": entry["label"],
                 "path": str(path),
-                "relative_path": str(path.relative_to(PROJECT_ROOT)),
+                "relative_path": str(path.relative_to(CONFIG_ROOT)),
                 "default": entry["id"] == manifest.get("default"),
                 "exists": path.exists(),
             }
@@ -80,7 +84,7 @@ def resolve_profile(profile_id: str | None) -> dict[str, Any]:
                 "label": entry["label"],
                 "report_label": entry.get("report_label") or entry["label"],
                 "path": str(path),
-                "relative_path": str(path.relative_to(PROJECT_ROOT)),
+                "relative_path": str(path.relative_to(CONFIG_ROOT)),
                 "default": entry["id"] == manifest.get("default"),
             }
     available = ", ".join(profile["id"] for profile in list_profiles())

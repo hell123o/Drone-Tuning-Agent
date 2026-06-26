@@ -62,6 +62,10 @@ function Update-WinUnpackedResources {
             To = Join-Path $WinResourcesDir "app\main.js"
         },
         @{
+            From = Join-Path $Root "desktop\runtime-core.js"
+            To = Join-Path $WinResourcesDir "app\runtime-core.js"
+        },
+        @{
             From = Join-Path $Root "desktop\package.json"
             To = Join-Path $WinResourcesDir "app\package.json"
         },

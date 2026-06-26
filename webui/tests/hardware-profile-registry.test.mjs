@@ -14,6 +14,7 @@ import test from "node:test";
 import {
   ensureHardwareProfileConfig,
   deleteUserHardwareProfile,
+  readHardwareProfileCatalog,
   saveUserHardwareProfile,
 } from "../src/lib/hardware-profile-registry.mjs";
 
@@ -171,14 +172,6 @@ test("ensureHardwareProfileConfig seeds missing runtime profiles from bundled co
         readJson(path.join(runtimeRoot, "config", "hardware-profiles", "manifest.json")),
         readJson(path.join(bundledProfileRoot, "manifest.json")),
       );
-      assert.equal(
-        existsSync(path.join(runtimeRoot, "config", "hardware-profiles", "x760_base.json")),
-        true,
-      );
-      assert.equal(
-        existsSync(path.join(runtimeRoot, "config", "vehicles", "x760.json")),
-        true,
-      );
     } finally {
       rmSync(runtimeRoot, { recursive: true, force: true });
     }
@@ -227,13 +220,63 @@ test("ensureHardwareProfileConfig preserves user profiles while refreshing bundl
       assert.equal(manifest.default, "x760_base");
       assert.equal(manifest.profiles.some((entry) => entry.id === "x760_base"), true);
       assert.equal(manifest.profiles.some((entry) => entry.id === "old_default"), false);
-      assert.deepEqual(manifest.profiles.at(-1), {
+      assert.deepEqual(manifest.profiles.map((profile) => {
+        const entry = { ...profile };
+        delete entry.configRoot;
+        return entry;
+      }).at(-1), {
         id: "x760_payload",
         label: "X760 Payload",
         report_label: "X760 Payload",
         path: "user_x760_payload.json",
         user: true,
       });
+      assert.deepEqual(readJson(path.join(runtimeProfileRoot, "user_x760_payload.json")), {
+        name: "payload",
+      });
+    } finally {
+      rmSync(runtimeRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+test("readHardwareProfileCatalog reads bundled profiles when runtime manifest is missing", () => {
+  withConfig(({ root: bundledRoot }) => {
+    const runtimeRoot = mkdtempSync(path.join(tmpdir(), "drone-profile-runtime-"));
+    try {
+      const catalog = readHardwareProfileCatalog({
+        projectRoot: runtimeRoot,
+        bundledConfigRoot: path.join(bundledRoot, "config"),
+      });
+
+      assert.equal(catalog.default, "x760_base");
+      assert.equal(catalog.profiles[0].id, "x760_base");
+      assert.equal(catalog.profiles[0].configRoot, path.join(bundledRoot, "config"));
+    } finally {
+      rmSync(runtimeRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+test("saveUserHardwareProfile can create a runtime manifest from bundled profiles", () => {
+  withConfig(({ root: bundledRoot }) => {
+    const runtimeRoot = mkdtempSync(path.join(tmpdir(), "drone-profile-runtime-"));
+    const runtimeProfileRoot = path.join(runtimeRoot, "config", "hardware-profiles");
+    try {
+      saveUserHardwareProfile({
+        projectRoot: runtimeRoot,
+        bundledConfigRoot: path.join(bundledRoot, "config"),
+        id: "x760_payload",
+        label: "X760 Payload",
+        profileJson: '{"name":"payload"}',
+      });
+
+      const catalog = readHardwareProfileCatalog({
+        projectRoot: runtimeRoot,
+        bundledConfigRoot: path.join(bundledRoot, "config"),
+      });
+      assert.equal(catalog.profiles.some((entry) => entry.id === "x760_base"), true);
+      assert.equal(catalog.profiles.some((entry) => entry.id === "x760_payload" && entry.user), true);
       assert.deepEqual(readJson(path.join(runtimeProfileRoot, "user_x760_payload.json")), {
         name: "payload",
       });
