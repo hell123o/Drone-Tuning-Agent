@@ -3,6 +3,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
+$VenvPython = Join-Path $Root ".venv-win\Scripts\python.exe"
 $DistCli = Join-Path $Root "dist\drone-agent-cli.exe"
 $WebStandalone = Join-Path $Root "webui\.next\standalone"
 $WebStatic = Join-Path $Root "webui\.next\static"
@@ -37,13 +38,18 @@ function Assert-Path {
 
 Push-Location $Root
 try {
-    Invoke-Step "Installing Python package and PyInstaller if needed" {
-        python -m pip install -e .
-        python -m pip install pyinstaller
+    Invoke-Step "Preparing isolated Python build environment" {
+        if (-not (Test-Path $VenvPython)) {
+            python -m venv (Join-Path $Root ".venv-win")
+        }
+        Assert-Path $VenvPython "Python virtual environment was not created."
+        & $VenvPython -m pip install --upgrade pip
+        & $VenvPython -m pip install -e .
+        & $VenvPython -m pip install pyinstaller
     }
 
     Invoke-Step "Building Python CLI" {
-        python -m PyInstaller --clean --noconfirm drone-agent-cli.spec
+        & $VenvPython -m PyInstaller --clean --noconfirm drone-agent-cli.spec
         Assert-Path $DistCli "PyInstaller did not produce the diagnostic CLI."
     }
 
