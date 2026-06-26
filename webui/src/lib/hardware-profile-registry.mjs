@@ -1,5 +1,7 @@
 import {
+  cpSync,
   existsSync,
+  mkdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -35,6 +37,14 @@ function readManifest(projectRoot) {
     throw new Error("Hardware profile manifest is invalid");
   }
   return manifest;
+}
+
+function safeReadManifest(projectRoot) {
+  try {
+    return readManifest(projectRoot);
+  } catch {
+    return null;
+  }
 }
 
 function validateProfileId(id) {
@@ -78,6 +88,36 @@ function resolveManifestProfilePath(projectRoot, relativePath) {
     throw new Error(`Profile path escapes hardware profile directory: ${relativePath}`);
   }
   return resolved;
+}
+
+function copyBundledConfig({ projectRoot, bundledConfigRoot }) {
+  mkdirSync(configRoot(projectRoot), { recursive: true });
+  cpSync(bundledConfigRoot, configRoot(projectRoot), { recursive: true, force: true });
+}
+
+export function ensureHardwareProfileConfig({ projectRoot, bundledConfigRoot }) {
+  if (!bundledConfigRoot) return false;
+
+  const bundledManifestFile = path.join(bundledConfigRoot, "hardware-profiles", "manifest.json");
+  if (!existsSync(bundledManifestFile)) return false;
+
+  const bundledManifest = readJson(bundledManifestFile);
+  if (!Array.isArray(bundledManifest.profiles)) {
+    throw new Error("Bundled hardware profile manifest is invalid");
+  }
+
+  const runtimeManifest = safeReadManifest(projectRoot);
+  const userProfiles = (runtimeManifest?.profiles || []).filter((entry) => entry.user === true);
+  copyBundledConfig({ projectRoot, bundledConfigRoot });
+
+  writeJson(manifestPath(projectRoot), {
+    ...bundledManifest,
+    profiles: [
+      ...bundledManifest.profiles,
+      ...userProfiles,
+    ],
+  });
+  return true;
 }
 
 export function saveUserHardwareProfile({

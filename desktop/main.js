@@ -56,15 +56,9 @@ function ensurePackagedCore() {
     }
   }
   const sourceConfig = path.join(bundledCore, 'config');
-  if (fs.existsSync(sourceConfig)) {
-    try {
-      fs.rmSync(targetConfig, { recursive: true, force: true });
-      fs.cpSync(sourceConfig, targetConfig, { recursive: true, force: true });
-    } catch (error) {
-      // Config is also embedded in the PyInstaller CLI. Do not block app startup
-      // when Documents/OneDrive/protected folders reject directory copying.
-      fs.writeFileSync(path.join(projectRoot, 'config-copy-warning.log'), String(error.stack || error), 'utf-8');
-    }
+  if (fs.existsSync(sourceConfig) && !fs.existsSync(path.join(targetConfig, 'hardware-profiles', 'manifest.json'))) {
+    fs.mkdirSync(path.dirname(targetConfig), { recursive: true });
+    fs.cpSync(sourceConfig, targetConfig, { recursive: true, force: true });
   }
 }
 
@@ -99,6 +93,7 @@ async function startServer() {
     PORT: String(port),
     HOSTNAME: '127.0.0.1',
     DRONE_AGENT_PROJECT_ROOT: projectRoot,
+    DRONE_AGENT_BUNDLED_CONFIG_ROOT: isPackaged() ? path.join(process.resourcesPath, 'app-core', 'config') : '',
   };
 
   if (isPackaged()) {

@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import * as path from "node:path";
-import { deleteUserHardwareProfile, saveUserHardwareProfile } from "@/lib/hardware-profile-registry.mjs";
+import { deleteUserHardwareProfile, ensureHardwareProfileConfig, saveUserHardwareProfile } from "@/lib/hardware-profile-registry.mjs";
 
 const PROJECT_ROOT = process.env.DRONE_AGENT_PROJECT_ROOT || path.resolve(process.cwd(), "..");
 const CONFIG_ROOT = path.join(PROJECT_ROOT, "config");
 const PROFILE_ROOT = path.join(CONFIG_ROOT, "hardware-profiles");
 const MANIFEST_FILE = path.join(PROFILE_ROOT, "manifest.json");
+const BUNDLED_CONFIG_ROOT = process.env.DRONE_AGENT_BUNDLED_CONFIG_ROOT;
 const WINDOWS_CLI_EXE = path.join(PROJECT_ROOT, "drone-agent-cli.exe");
 const WINDOWS_PYTHON = path.join(PROJECT_ROOT, ".venv-win", "Scripts", "python.exe");
 const WSL_PYTHON = path.join(PROJECT_ROOT, ".venv", "bin", "python");
@@ -75,6 +76,8 @@ function profileSummary(entry: ManifestProfile, defaultId?: string) {
 }
 
 export async function GET(request: NextRequest) {
+  ensureHardwareProfileConfig({ projectRoot: PROJECT_ROOT, bundledConfigRoot: BUNDLED_CONFIG_ROOT });
+
   if (!existsSync(MANIFEST_FILE)) {
     return NextResponse.json({ error: "Hardware profile manifest not found" }, { status: 404 });
   }
@@ -114,6 +117,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    ensureHardwareProfileConfig({ projectRoot: PROJECT_ROOT, bundledConfigRoot: BUNDLED_CONFIG_ROOT });
     const body = (await request.json()) as {
       id?: string;
       label?: string;
@@ -139,6 +143,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    ensureHardwareProfileConfig({ projectRoot: PROJECT_ROOT, bundledConfigRoot: BUNDLED_CONFIG_ROOT });
     const id = request.nextUrl.searchParams.get("id");
     const result = deleteUserHardwareProfile({ projectRoot: PROJECT_ROOT, id });
     return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });

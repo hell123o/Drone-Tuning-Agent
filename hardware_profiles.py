@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(os.environ.get("DRONE_AGENT_PROJECT_ROOT") or Path(__file__).resolve().parent)
 CONFIG_DIR = PROJECT_ROOT / "config"
 PROFILE_DIR = CONFIG_DIR / "hardware-profiles"
 VEHICLE_DIR = CONFIG_DIR / "vehicles"

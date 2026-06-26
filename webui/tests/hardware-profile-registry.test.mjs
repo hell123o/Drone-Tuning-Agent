@@ -12,6 +12,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  ensureHardwareProfileConfig,
   deleteUserHardwareProfile,
   saveUserHardwareProfile,
 } from "../src/lib/hardware-profile-registry.mjs";
@@ -40,6 +41,8 @@ function withConfig(fn) {
     "utf-8",
   );
   writeFileSync(path.join(profileRoot, "x760_base.json"), '{"name":"X760"}', "utf-8");
+  mkdirSync(path.join(root, "config", "vehicles"), { recursive: true });
+  writeFileSync(path.join(root, "config", "vehicles", "x760.json"), '{"name":"X760 vehicle"}', "utf-8");
 
   try {
     return fn({ root, profileRoot });
@@ -147,5 +150,95 @@ test("saveUserHardwareProfile rejects ids that could escape the profile director
         }),
       /id/,
     );
+  });
+});
+
+test("ensureHardwareProfileConfig seeds missing runtime profiles from bundled config", () => {
+  withConfig(({ root: bundledRoot, profileRoot: bundledProfileRoot }) => {
+    const runtimeRoot = mkdtempSync(path.join(tmpdir(), "drone-profile-runtime-"));
+    try {
+      const ensured = ensureHardwareProfileConfig({
+        projectRoot: runtimeRoot,
+        bundledConfigRoot: path.join(bundledRoot, "config"),
+      });
+
+      assert.equal(ensured, true);
+      assert.equal(
+        existsSync(path.join(runtimeRoot, "config", "hardware-profiles", "manifest.json")),
+        true,
+      );
+      assert.deepEqual(
+        readJson(path.join(runtimeRoot, "config", "hardware-profiles", "manifest.json")),
+        readJson(path.join(bundledProfileRoot, "manifest.json")),
+      );
+      assert.equal(
+        existsSync(path.join(runtimeRoot, "config", "hardware-profiles", "x760_base.json")),
+        true,
+      );
+      assert.equal(
+        existsSync(path.join(runtimeRoot, "config", "vehicles", "x760.json")),
+        true,
+      );
+    } finally {
+      rmSync(runtimeRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+test("ensureHardwareProfileConfig preserves user profiles while refreshing bundled profiles", () => {
+  withConfig(({ root: bundledRoot }) => {
+    const runtimeRoot = mkdtempSync(path.join(tmpdir(), "drone-profile-runtime-"));
+    const runtimeProfileRoot = path.join(runtimeRoot, "config", "hardware-profiles");
+    mkdirSync(runtimeProfileRoot, { recursive: true });
+    writeFileSync(
+      path.join(runtimeProfileRoot, "manifest.json"),
+      JSON.stringify(
+        {
+          default: "old_default",
+          profiles: [
+            {
+              id: "old_default",
+              label: "Old default",
+              path: "old_default.json",
+            },
+            {
+              id: "x760_payload",
+              label: "X760 Payload",
+              report_label: "X760 Payload",
+              path: "user_x760_payload.json",
+              user: true,
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+    writeFileSync(path.join(runtimeProfileRoot, "user_x760_payload.json"), '{"name":"payload"}', "utf-8");
+
+    try {
+      ensureHardwareProfileConfig({
+        projectRoot: runtimeRoot,
+        bundledConfigRoot: path.join(bundledRoot, "config"),
+      });
+
+      const manifest = readJson(path.join(runtimeProfileRoot, "manifest.json"));
+      assert.equal(manifest.default, "x760_base");
+      assert.equal(manifest.profiles.some((entry) => entry.id === "x760_base"), true);
+      assert.equal(manifest.profiles.some((entry) => entry.id === "old_default"), false);
+      assert.deepEqual(manifest.profiles.at(-1), {
+        id: "x760_payload",
+        label: "X760 Payload",
+        report_label: "X760 Payload",
+        path: "user_x760_payload.json",
+        user: true,
+      });
+      assert.deepEqual(readJson(path.join(runtimeProfileRoot, "user_x760_payload.json")), {
+        name: "payload",
+      });
+    } finally {
+      rmSync(runtimeRoot, { recursive: true, force: true });
+    }
   });
 });

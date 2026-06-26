@@ -36,6 +36,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { normalizeHardwareProfileId } from "@/lib/profile-id.mjs";
 
 type Chart = {
   name: string;
@@ -157,18 +158,9 @@ export default function Home() {
     return requestedProfile;
   }, [hardwareProfile]);
 
-  function slugifyProfileId(label: string) {
-    return label
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "")
-      .slice(0, 64);
-  }
-
   function handleProfileLabelChange(value: string) {
     setSavedProfileLabel(value);
-    setSavedProfileId((current) => current || slugifyProfileId(value));
+    setSavedProfileId((current) => current || normalizeHardwareProfileId(value, `custom_${Date.now().toString(36)}`));
   }
 
   function copySelectedProfileToCustomEditor() {
@@ -181,7 +173,7 @@ export default function Home() {
     setCustomHardwareFileName("");
     setCustomHardwareError("");
     setSavedProfileLabel(`${selectedProfile?.label ?? hardwareProfile} custom`);
-    setSavedProfileId(`${hardwareProfile}_custom`);
+    setSavedProfileId(normalizeHardwareProfileId(`${hardwareProfile}_custom`, `custom_${Date.now().toString(36)}`));
   }
 
   async function loadCustomHardwareFile(file: File | null) {
@@ -231,25 +223,21 @@ export default function Home() {
       setCustomHardwareError("请填写要保存到下拉框的画像名称");
       return;
     }
-    if (!savedProfileId.trim()) {
-      setCustomHardwareError("请填写画像 ID");
-      return;
-    }
-
     setProfileActionBusy(true);
     try {
+      const nextProfileId = normalizeHardwareProfileId(savedProfileId || savedProfileLabel, `custom_${Date.now().toString(36)}`);
       const response = await fetch("/api/hardware-profiles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: savedProfileId.trim(),
+          id: nextProfileId,
           label: savedProfileLabel.trim(),
           profileJson: customHardwareJson,
         }),
       });
       const data = (await response.json()) as { error?: string; profile?: HardwareProfileSummary };
       if (!response.ok) throw new Error(data.error || "保存硬件画像失败");
-      const nextId = data.profile?.id || savedProfileId.trim();
+      const nextId = data.profile?.id || nextProfileId;
       await refreshHardwareProfiles(nextId);
       setUseCustomHardware(false);
       setCustomHardwareError("");
