@@ -13,6 +13,7 @@ _BUNDLED_CONFIG_DIR = os.environ.get("DRONE_AGENT_BUNDLED_CONFIG_ROOT")
 CONFIG_DIR = PROJECT_ROOT / "config"
 if not (CONFIG_DIR / "hardware-profiles" / "manifest.json").exists() and _BUNDLED_CONFIG_DIR:
     CONFIG_DIR = Path(_BUNDLED_CONFIG_DIR)
+CONFIG_DIR = CONFIG_DIR.resolve()
 CONFIG_ROOT = CONFIG_DIR.parent
 PROFILE_DIR = CONFIG_DIR / "hardware-profiles"
 VEHICLE_DIR = CONFIG_DIR / "vehicles"

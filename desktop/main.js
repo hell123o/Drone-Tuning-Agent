@@ -77,6 +77,7 @@ async function startServer() {
     HOSTNAME: '127.0.0.1',
     DRONE_AGENT_PROJECT_ROOT: projectRoot,
     DRONE_AGENT_BUNDLED_CONFIG_ROOT: isPackaged() ? path.join(process.resourcesPath, 'app-core', 'config') : '',
+    DRONE_AGENT_BUNDLED_CLI_EXE: isPackaged() ? path.join(process.resourcesPath, 'app-core', 'drone-agent-cli.exe') : '',
   };
 
   if (isPackaged()) {

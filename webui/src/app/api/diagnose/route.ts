@@ -2,14 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
+import { pickDiagnosisRunner } from "@/lib/diagnose-command.mjs";
 import { appendHardwareArgs, prepareHardwareSelection } from "@/lib/diagnose-hardware.mjs";
+import { buildFailureStatus, formatCommandForDisplay } from "@/lib/diagnose-status.mjs";
 
 const PROJECT_ROOT = process.env.DRONE_AGENT_PROJECT_ROOT || path.resolve(process.cwd(), "..");
 const RUNS_ROOT = path.join(PROJECT_ROOT, "webui_runs");
 const LATEST_FILE = path.join(RUNS_ROOT, "latest.json");
-const WINDOWS_CLI_EXE = path.join(PROJECT_ROOT, "drone-agent-cli.exe");
-const WINDOWS_PYTHON = path.join(PROJECT_ROOT, ".venv-win", "Scripts", "python.exe");
-const WSL_PYTHON = path.join(PROJECT_ROOT, ".venv", "bin", "python");
 
 type DiagnoseInput = {
   logfile?: string;
@@ -35,13 +34,6 @@ function readMetadataFromForm(form: FormData) {
     if (value) metadata[key] = value;
   }
   return metadata;
-}
-
-function pickPython() {
-  if (existsSync(WINDOWS_CLI_EXE)) return WINDOWS_CLI_EXE;
-  if (existsSync(WINDOWS_PYTHON)) return WINDOWS_PYTHON;
-  if (process.platform !== "win32" && existsSync(WSL_PYTHON)) return WSL_PYTHON;
-  return "python";
 }
 
 function safeRunId(logfile: string) {
@@ -125,27 +117,43 @@ function buildDoneResponse(runId: string, outputDir: string, stdout: string, std
 function startDiagnosisJob({
   runId,
   outputDir,
+  command,
+  runnerSource,
   args,
   apiKey,
 }: {
   runId: string;
   outputDir: string;
+  command: string;
+  runnerSource: string;
   args: string[];
   apiKey?: string;
 }) {
   let stdout = "";
   let stderr = "";
   const startedAt = new Date().toISOString();
+  const cwd = PROJECT_ROOT;
+  const commandLine = formatCommandForDisplay(command, args);
   writeStatus(outputDir, {
     runId,
     state: "running",
     step: "已上传文件，正在启动 Python 诊断...",
     progress: 15,
     startedAt,
+    diagnostics: {
+      command: commandLine,
+      executable: command,
+      args,
+      commandLine,
+      cwd,
+      outputDir,
+      projectRoot: PROJECT_ROOT,
+      runnerSource,
+    },
   });
 
-  const child = spawn(pickPython(), args, {
-    cwd: PROJECT_ROOT,
+  const child = spawn(command, args, {
+    cwd,
     env: { ...process.env, ...(apiKey ? { LLM_API_KEY: apiKey } : {}) },
     windowsHide: true,
   });
@@ -157,6 +165,17 @@ function startDiagnosisJob({
     progress: 35,
     startedAt,
     pid: child.pid,
+    diagnostics: {
+      command: commandLine,
+      executable: command,
+      args,
+      commandLine,
+      cwd,
+      outputDir,
+      projectRoot: PROJECT_ROOT,
+      pid: child.pid,
+      runnerSource,
+    },
   });
 
   child.stdout.on("data", (chunk) => {
@@ -197,6 +216,20 @@ function startDiagnosisJob({
       error: error.message,
       stdout,
       stderr,
+      ...(buildFailureStatus({
+        runId,
+        step: "diagnosis start failed",
+        startedAt,
+        command,
+        args,
+        cwd,
+        outputDir,
+        projectRoot: PROJECT_ROOT,
+        runnerSource,
+        error: error.message,
+        stdout,
+        stderr,
+      }) as Record<string, unknown>),
     });
   });
 
@@ -211,6 +244,20 @@ function startDiagnosisJob({
         code,
         stdout,
         stderr,
+        ...(buildFailureStatus({
+          runId,
+          step: "diagnosis run failed",
+          startedAt,
+          command,
+          args,
+          cwd,
+          outputDir,
+          projectRoot: PROJECT_ROOT,
+          runnerSource,
+          code,
+          stdout,
+          stderr,
+        }) as Record<string, unknown>),
       });
       return;
     }
@@ -288,8 +335,14 @@ export async function POST(request: NextRequest) {
     writeFileSync(metadataFile, JSON.stringify(body.metadata, null, 2), "utf-8");
   }
 
-  const command = pickPython();
-  const args = command === WINDOWS_CLI_EXE ? [logfile, "--output", outputDir] : ["main.py", logfile, "--output", outputDir];
+  const runner = pickDiagnosisRunner({
+    projectRoot: PROJECT_ROOT,
+    env: process.env,
+    platform: process.platform,
+    existsSync,
+  });
+  const command = runner.command;
+  const args = [...runner.argsPrefix, logfile, "--output", outputDir];
   if (paramsFile) args.push("-p", paramsFile);
   if (body.question?.trim()) args.push("-q", body.question.trim());
   appendHardwareArgs(args, hardwareSelection);
@@ -297,7 +350,7 @@ export async function POST(request: NextRequest) {
   if (body.model?.trim()) args.push("--model", body.model.trim());
   if (metadataFile) args.push("--metadata", metadataFile);
 
-  startDiagnosisJob({ runId, outputDir, args, apiKey: body.apiKey?.trim() });
+  startDiagnosisJob({ runId, outputDir, command, runnerSource: runner.source, args, apiKey: body.apiKey?.trim() });
 
   const accept = request.headers.get("accept") || "";
   if (accept.includes("text/html")) {
